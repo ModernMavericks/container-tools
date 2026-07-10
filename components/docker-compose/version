@@ -1,2 +1,2 @@
 REPO=https://github.com/docker/compose.git
-REF=v2.40.3
+REF=v5.3.1
