@@ -140,13 +140,19 @@ endif()
 
 # --- component builds, gates, and unit tests ---
 mvd_read_pin("${CMAKE_SOURCE_DIR}/components/legacy-support" LS_REPO LS_REF)
+set(LS_SRC "${MVD_SRC_CACHE}/legacy-support-${LS_REF}")
 set(LS_OUT "${CMAKE_BINARY_DIR}/legacy-support")
 set(LS_A   "${LS_OUT}/lib/libMacportsLegacySupport.a")
+# Fetched once into the shared source cache like the docker components, but
+# built from a per-build-dir copy: make compiles in-tree, so native and cross
+# builds sharing one checkout would stomp each other's objects.
 ExternalProject_Add(legacy_support
-  GIT_REPOSITORY   "${LS_REPO}"
-  GIT_TAG          "${LS_REF}"
-  GIT_SHALLOW      TRUE
-  UPDATE_DISCONNECTED TRUE   # pinned tag: clone once, don't re-fetch/rebuild each build
+  SOURCE_DIR       "${CMAKE_BINARY_DIR}/legacy-support-src"
+  DOWNLOAD_COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/clone_pinned.sh"
+                     "${LS_REPO}" "${LS_REF}" "${LS_SRC}"
+           COMMAND "${CMAKE_COMMAND}" -E remove_directory <SOURCE_DIR>  # purge stale copy on REF bump
+           COMMAND "${CMAKE_COMMAND}" -E copy_directory "${LS_SRC}" <SOURCE_DIR>
+  UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
   CONFIGURE_COMMAND ""
   BUILD_COMMAND    sh "${CMAKE_SOURCE_DIR}/cmake/build_legacy_support.sh"
