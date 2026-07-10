@@ -42,7 +42,10 @@ endif()
 if(NOT MVD_MODE STREQUAL "iso")
   # Pinned 10.9 SDK. native -> system SDK; cross -> fetch it.
   set(MVD_MACOSX_10_9_SDK "" CACHE PATH "MacOSX10.9 SDK root (cross build)")
-  if(MVD_MODE STREQUAL "cross" AND NOT MVD_MACOSX_10_9_SDK)
+  # Re-fetch when unset OR when the cached path went stale (TMPDIR-era caches
+  # pointed into purgeable /var/folders and macOS eventually deleted the SDK).
+  if(MVD_MODE STREQUAL "cross"
+     AND (NOT MVD_MACOSX_10_9_SDK OR NOT EXISTS "${MVD_MACOSX_10_9_SDK}/usr/lib"))
     execute_process(COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fetch_10_9_sdk.sh"
       OUTPUT_VARIABLE _sdk OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE _sdkrc)
     if(NOT _sdkrc EQUAL 0)

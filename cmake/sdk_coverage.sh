@@ -15,7 +15,12 @@ SDK=$(sh "$(dirname "$0")/fetch_10_9_sdk.sh")
 STUBSYMS=$(mktemp "${TMPDIR:-/tmp}/mvd-stubsyms.XXXXXX"); trap 'rm -f "$STUBSYMS"' EXIT
 find "$SDK/usr/lib" "$SDK/System/Library/Frameworks" -type f 2>/dev/null | while IFS= read -r f; do
   case "$f" in
-    *.tbd) grep -hoE '_[A-Za-z0-9_$]+' "$f" ;;
+    # Parse (weak-)symbols arrays; a bare token grep would mangle names that
+    # don't start with "_" (dyld_stub_binder). Arrays may span multiple lines.
+    # "|| :": grep exits 1 on symbol-less tbds, which under set -e would
+    # silently kill this whole extraction loop mid-stream.
+    *.tbd) { tr '\n' ' ' < "$f" | grep -oE 'symbols: *\[[^]]*\]' \
+             | sed "s/.*\[//; s/\]//" | tr ',' '\n' | sed "s/[ '\"]//g" | grep -v '^$'; } || : ;;
     *.h|*.hpp|*.plist|*.strings|*.modulemap|*.nib|*.png|*.a) : ;;
     *) nm -g "$f" 2>/dev/null | awk '$1 ~ /^[0-9a-fA-F]+$/ {print $NF}' ;;
   esac
