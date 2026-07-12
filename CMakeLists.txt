@@ -40,6 +40,11 @@ if(NOT MVD_EXPECTED_MODE STREQUAL MVD_MODE)
 endif()
 
 if(NOT MVD_MODE STREQUAL "iso")
+  # Shared 10.9 build machinery (SDK fetch + compat guard scripts). Resolved here, in the
+  # non-iso path and BEFORE the SDK-fetch execute_process below, so a cross first-configure
+  # (empty cache) has MavericksSharedCMake_DIR set. iso mode returns earlier and never needs it.
+  find_package(MavericksSharedCMake REQUIRED)
+
   # Pinned 10.9 SDK. native -> system SDK; cross -> fetch it.
   set(MVD_MACOSX_10_9_SDK "" CACHE PATH "MacOSX10.9 SDK root (cross build)")
   # Re-fetch when unset OR when the cached path went stale (TMPDIR-era caches
@@ -137,11 +142,6 @@ if(MVD_MODE STREQUAL "iso")
 
   return()  # iso mode defines nothing from the Mac pipeline below
 endif()
-
-# Shared 10.9 build machinery (SDK fetch + compat guard scripts). Only in the non-iso
-# path, so iso mode / boot2docker.yml never needs the shared package installed. Sets
-# MavericksSharedCMake_DIR (the installed config dir, which contains scripts/).
-find_package(MavericksSharedCMake REQUIRED)
 
 # --- component builds, gates, and unit tests ---
 mvd_read_pin("${CMAKE_SOURCE_DIR}/components/legacy-support" LS_REPO LS_REF)
