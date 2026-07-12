@@ -1,18 +1,20 @@
 #!/bin/sh
 # The already-built docker binary must pass the guard (x86_64, min-10.9, no post-10.9 imports).
+# $1 = binary to check; $2 = path to the shared compat_guard.sh (from the ctest def).
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN="${1:-$ROOT/build/docker-cli/docker}"
+GUARD="${2:?compat_guard.sh path required (arg 2)}"
 [ -x "$BIN" ] || { echo "build docker-cli first (cmake --build <dir>)" >&2; exit 1; }
-sh "$ROOT/cmake/compat_guard.sh" "$BIN"
+sh "$GUARD" "$BIN"
 
 # Teeth: the gate must be fail-closed, not a rubber stamp.
-# (1) no binaries at all -> mvd_die, exit 4
-if sh "$ROOT/cmake/compat_guard.sh" >/dev/null 2>&1; then
+# (1) no binaries at all -> fail-closed, non-zero
+if sh "$GUARD" >/dev/null 2>&1; then
   echo "compat_guard_test: FAIL — guard passed with no binaries (not fail-closed)" >&2; exit 1
 fi
 # (2) a missing path -> non-zero
-if sh "$ROOT/cmake/compat_guard.sh" "$ROOT/build/docker-cli/does-not-exist" >/dev/null 2>&1; then
+if sh "$GUARD" "$ROOT/build/docker-cli/does-not-exist" >/dev/null 2>&1; then
   echo "compat_guard_test: FAIL — guard passed a missing binary" >&2; exit 1
 fi
 echo "compat_guard_test: OK"

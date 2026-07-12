@@ -46,7 +46,7 @@ if(NOT MVD_MODE STREQUAL "iso")
   # pointed into purgeable /var/folders and macOS eventually deleted the SDK).
   if(MVD_MODE STREQUAL "cross"
      AND (NOT MVD_MACOSX_10_9_SDK OR NOT EXISTS "${MVD_MACOSX_10_9_SDK}/usr/lib"))
-    execute_process(COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fetch_10_9_sdk.sh"
+    execute_process(COMMAND sh "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
       OUTPUT_VARIABLE _sdk OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE _sdkrc)
     if(NOT _sdkrc EQUAL 0)
       message(FATAL_ERROR "fetch_10_9_sdk.sh failed")
@@ -138,6 +138,11 @@ if(MVD_MODE STREQUAL "iso")
   return()  # iso mode defines nothing from the Mac pipeline below
 endif()
 
+# Shared 10.9 build machinery (SDK fetch + compat guard scripts). Only in the non-iso
+# path, so iso mode / boot2docker.yml never needs the shared package installed. Sets
+# MavericksSharedCMake_DIR (the installed config dir, which contains scripts/).
+find_package(MavericksSharedCMake REQUIRED)
+
 # --- component builds, gates, and unit tests ---
 mvd_read_pin("${CMAKE_SOURCE_DIR}/components/legacy-support" LS_REPO LS_REF)
 set(LS_SRC "${MVD_SRC_CACHE}/legacy-support-${LS_REF}")
@@ -226,7 +231,7 @@ ExternalProject_Add(docker_compose
 
 # Fail-closed build-artifact gates (run after `cmake --build`).
 add_test(NAME compat_guard
-  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/compat_guard.sh" "${DOCKER_BIN}")
+  COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${DOCKER_BIN}")
 add_test(NAME sdk_coverage
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh" "${DOCKER_BIN}")
 add_test(NAME characterize
@@ -238,12 +243,12 @@ set_tests_properties(characterize PROPERTIES ENVIRONMENT "GO=${MVD_GO}")
 
 # docker-machine through the same 10.9-safety gates.
 add_test(NAME compat_guard_machine
-  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/compat_guard.sh" "${MACHINE_BIN}")
+  COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${MACHINE_BIN}")
 add_test(NAME sdk_coverage_machine
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh" "${MACHINE_BIN}")
 # docker-compose through the same 10.9-safety gates.
 add_test(NAME compat_guard_compose
-  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/compat_guard.sh" "${COMPOSE_BIN}")
+  COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${COMPOSE_BIN}")
 add_test(NAME sdk_coverage_compose
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh" "${COMPOSE_BIN}")
 
@@ -256,13 +261,15 @@ add_test(NAME docker_cli_unit
 # These exercise the gate scripts against the built binary -> pass DOCKER_BIN so they
 # work with any build dir (cmake -B <dir>), not a hardcoded build/.
 add_test(NAME compat_guard_test
-  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/compat_guard_test.sh" "${DOCKER_BIN}")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/compat_guard_test.sh" "${DOCKER_BIN}" "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh")
 add_test(NAME sdk_coverage_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/sdk_coverage_test.sh" "${DOCKER_BIN}")
 add_test(NAME characterize_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/characterize_test.sh" "${DOCKER_BIN}")
 # Self-contained (no built binary needed).
-foreach(t fetch_sdk_test scaffold_test renovate_test docker_compose_test)
+foreach(t scaffold_test renovate_test docker_compose_test)
   add_test(NAME ${t} COMMAND sh "${CMAKE_SOURCE_DIR}/tests/${t}.sh")
 endforeach()
+add_test(NAME fetch_sdk_test
+  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/fetch_sdk_test.sh" "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh")
 set_tests_properties(characterize_test PROPERTIES ENVIRONMENT "GO=${MVD_GO}")
