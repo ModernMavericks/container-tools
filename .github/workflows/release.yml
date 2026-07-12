@@ -17,7 +17,7 @@ permissions:
 env:
   # Shared 10.9 build machinery (find_package(MavericksSharedCMake) in the non-iso path).
   # Pinned by SHA for reproducible builds. Bump deliberately to pull shared-machinery changes.
-  MSC_REF: e5f7503d83fbfbfe19b41650de1bdb161e0b1d8d
+  MSC_REF: 3aebb2b4f699c58ffa88267e92c7c095c3b6ac21
 
 jobs:
   build-macos:

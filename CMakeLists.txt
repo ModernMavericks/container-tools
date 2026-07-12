@@ -44,6 +44,7 @@ if(NOT MVD_MODE STREQUAL "iso")
   # non-iso path and BEFORE the SDK-fetch execute_process below, so a cross first-configure
   # (empty cache) has MavericksSharedCMake_DIR set. iso mode returns earlier and never needs it.
   find_package(MavericksSharedCMake REQUIRED)
+  include(MavericksFetch)   # mavericks_fetch_10_9_sdk()
 
   # Pinned 10.9 SDK. native -> system SDK; cross -> fetch it.
   set(MVD_MACOSX_10_9_SDK "" CACHE PATH "MacOSX10.9 SDK root (cross build)")
@@ -51,11 +52,7 @@ if(NOT MVD_MODE STREQUAL "iso")
   # pointed into purgeable /var/folders and macOS eventually deleted the SDK).
   if(MVD_MODE STREQUAL "cross"
      AND (NOT MVD_MACOSX_10_9_SDK OR NOT EXISTS "${MVD_MACOSX_10_9_SDK}/usr/lib"))
-    execute_process(COMMAND sh "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
-      OUTPUT_VARIABLE _sdk OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE _sdkrc)
-    if(NOT _sdkrc EQUAL 0)
-      message(FATAL_ERROR "fetch_10_9_sdk.sh failed")
-    endif()
+    mavericks_fetch_10_9_sdk(_sdk)   # fetch+cache+verify (FATALs on failure); inherits MAVERICKS_SDK_CACHE
     set(MVD_MACOSX_10_9_SDK "${_sdk}" CACHE PATH "" FORCE)
   endif()
 
@@ -231,10 +228,10 @@ ExternalProject_Add(docker_compose
 
 # Fail-closed build-artifact gates (run after `cmake --build`).
 add_test(NAME compat_guard
-  COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${DOCKER_BIN}")
+  COMMAND sh "${MavericksSharedCMake_SCRIPTS}/compat_guard.sh" "${DOCKER_BIN}")
 add_test(NAME sdk_coverage
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
-             --fetch-script "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
+             --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_10_9_sdk.sh"
              "${DOCKER_BIN}")
 add_test(NAME characterize
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/characterize_build.sh" compare
@@ -245,17 +242,17 @@ set_tests_properties(characterize PROPERTIES ENVIRONMENT "GO=${MVD_GO}")
 
 # docker-machine through the same 10.9-safety gates.
 add_test(NAME compat_guard_machine
-  COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${MACHINE_BIN}")
+  COMMAND sh "${MavericksSharedCMake_SCRIPTS}/compat_guard.sh" "${MACHINE_BIN}")
 add_test(NAME sdk_coverage_machine
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
-             --fetch-script "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
+             --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_10_9_sdk.sh"
              "${MACHINE_BIN}")
 # docker-compose through the same 10.9-safety gates.
 add_test(NAME compat_guard_compose
-  COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${COMPOSE_BIN}")
+  COMMAND sh "${MavericksSharedCMake_SCRIPTS}/compat_guard.sh" "${COMPOSE_BIN}")
 add_test(NAME sdk_coverage_compose
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
-             --fetch-script "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
+             --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_10_9_sdk.sh"
              "${COMPOSE_BIN}")
 
 # Unit tests (script behavior + output invariants). Output-asserting ones take the
@@ -267,10 +264,10 @@ add_test(NAME docker_cli_unit
 # These exercise the gate scripts against the built binary -> pass DOCKER_BIN so they
 # work with any build dir (cmake -B <dir>), not a hardcoded build/.
 add_test(NAME compat_guard_test
-  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/compat_guard_test.sh" "${DOCKER_BIN}" "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/compat_guard_test.sh" "${DOCKER_BIN}" "${MavericksSharedCMake_SCRIPTS}/compat_guard.sh")
 add_test(NAME sdk_coverage_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/sdk_coverage_test.sh" "${DOCKER_BIN}"
-             "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh")
+             "${MavericksSharedCMake_SCRIPTS}/fetch_10_9_sdk.sh")
 add_test(NAME characterize_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/characterize_test.sh" "${DOCKER_BIN}")
 # Self-contained (no built binary needed).
@@ -278,5 +275,5 @@ foreach(t scaffold_test renovate_test docker_compose_test)
   add_test(NAME ${t} COMMAND sh "${CMAKE_SOURCE_DIR}/tests/${t}.sh")
 endforeach()
 add_test(NAME fetch_sdk_test
-  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/fetch_sdk_test.sh" "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/fetch_sdk_test.sh" "${MavericksSharedCMake_SCRIPTS}/fetch_10_9_sdk.sh")
 set_tests_properties(characterize_test PROPERTIES ENVIRONMENT "GO=${MVD_GO}")
