@@ -233,7 +233,9 @@ ExternalProject_Add(docker_compose
 add_test(NAME compat_guard
   COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${DOCKER_BIN}")
 add_test(NAME sdk_coverage
-  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh" "${DOCKER_BIN}")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
+             --fetch-script "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
+             "${DOCKER_BIN}")
 add_test(NAME characterize
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/characterize_build.sh" compare
              "${CMAKE_SOURCE_DIR}/cmake/characterization/docker-cli" "${DOCKER_BIN}")
@@ -245,12 +247,16 @@ set_tests_properties(characterize PROPERTIES ENVIRONMENT "GO=${MVD_GO}")
 add_test(NAME compat_guard_machine
   COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${MACHINE_BIN}")
 add_test(NAME sdk_coverage_machine
-  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh" "${MACHINE_BIN}")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
+             --fetch-script "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
+             "${MACHINE_BIN}")
 # docker-compose through the same 10.9-safety gates.
 add_test(NAME compat_guard_compose
   COMMAND sh "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh" "${COMPOSE_BIN}")
 add_test(NAME sdk_coverage_compose
-  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh" "${COMPOSE_BIN}")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
+             --fetch-script "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh"
+             "${COMPOSE_BIN}")
 
 # Unit tests (script behavior + output invariants). Output-asserting ones take the
 # built artifact path; self-contained ones run from the source tree.
@@ -263,7 +269,8 @@ add_test(NAME docker_cli_unit
 add_test(NAME compat_guard_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/compat_guard_test.sh" "${DOCKER_BIN}" "${MavericksSharedCMake_DIR}/scripts/compat_guard.sh")
 add_test(NAME sdk_coverage_test
-  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/sdk_coverage_test.sh" "${DOCKER_BIN}")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/sdk_coverage_test.sh" "${DOCKER_BIN}"
+             "${MavericksSharedCMake_DIR}/scripts/fetch_10_9_sdk.sh")
 add_test(NAME characterize_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/characterize_test.sh" "${DOCKER_BIN}")
 # Self-contained (no built binary needed).

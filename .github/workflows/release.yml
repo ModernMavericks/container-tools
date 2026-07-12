@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.sdk-cache
-          key: macosx10.9-sdk-${{ hashFiles('cmake/fetch_10_9_sdk.sh') }}
+          key: macosx10.9-sdk-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Build + gate (the SAME cmake build the Tahoe dry run runs)
         env:

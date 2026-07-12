@@ -2,12 +2,16 @@
 # Prove every undefined dynamic import of each binary exists in the 10.9 SDK's
 # library stubs OR is on the weak allowlist. Version-INDEPENDENT: no committed
 # per-version reference needed. Fail-closed.
+# Usage: sdk_coverage.sh [--fetch-script <path>] <binary> [<binary> ...]
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd); . "$(dirname "$0")/common.sh"
 export LC_ALL=C
+# Optional: caller passes --fetch-script <path> to override the shared fetch script.
+FETCH_SCRIPT=$(dirname "$0")/fetch_10_9_sdk.sh
+if [ "${1-}" = "--fetch-script" ]; then FETCH_SCRIPT="$2"; shift 2; fi
 # Always verify against the SAME pinned 10.9 SDK, on box and CI alike — it is the
 # reference contract, not the build host's system libs.
-SDK=$(sh "$(dirname "$0")/fetch_10_9_sdk.sh")
+SDK=$(sh "$FETCH_SCRIPT")
 [ -d "$SDK" ] || mvd_die "no pinned 10.9 SDK at $SDK"
 # The 10.9 SDK ships Mach-O stub dylibs/frameworks (pre-.tbd): extract DEFINED
 # (address-bearing) symbols via nm. Also handle .tbd text stubs if a future SDK

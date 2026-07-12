@@ -4,6 +4,11 @@
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN="${1:-$ROOT/build/docker-cli/docker}"
+FETCH_SCRIPT="${2:-}"
 [ -x "$BIN" ] || { echo "build docker-cli first (cmake --build <dir>)" >&2; exit 1; }
-sh "$ROOT/cmake/sdk_coverage.sh" "$BIN"
+if [ -n "$FETCH_SCRIPT" ]; then
+  sh "$ROOT/cmake/sdk_coverage.sh" --fetch-script "$FETCH_SCRIPT" "$BIN"
+else
+  sh "$ROOT/cmake/sdk_coverage.sh" "$BIN"
+fi
 echo "sdk_coverage_test: OK"
