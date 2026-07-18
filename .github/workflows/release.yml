@@ -10,12 +10,11 @@ on:
   push:
     branches: [main]        # regular build+gate on every main push (artifact, no publish)
     tags: ['v*']            # tags additionally publish a release
-  pull_request:             # gate PRs (incl. Renovate bumps) on the same build+gate before merge
-    paths-ignore:           # skip only clearly-irrelevant PRs; anything else runs the gate (fail-safe)
-      - 'components/boot2docker/**'         # boot2docker builds on ubuntu (boot2docker.yml), not here
-      - '.github/workflows/boot2docker.yml'
-      - 'docs/**'
-      - 'README.md'
+  pull_request:             # gate EVERY PR (incl. Renovate bumps) on the same build+gate before merge.
+                            # No path filter on purpose: build-macos always runs, so it is safe to make
+                            # a required check. A path-filtered required check would block any PR that
+                            # skips it (the check stays permanently pending). publish is tag-gated, so
+                            # PRs build+gate but never release.
   workflow_dispatch:        # manual runs produce an artifact, not a release
 
 permissions:
