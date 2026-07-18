@@ -18,7 +18,7 @@ permissions:
 env:
   # Shared 10.9 build machinery (find_package(MavericksSharedCMake) in the non-iso path).
   # Pinned by SHA for reproducible builds. Bump deliberately to pull shared-machinery changes.
-  MSC_REF: 8bc9fc38d40c40aaa5c95aefe21f29c64ce34d31  # mavericks-shared-cmake
+  MSC_REF: ecace6c69ab7cdff3e2feea06155c7efc61ebbf2  # mavericks-shared-cmake
 
 jobs:
   build-macos:
@@ -29,7 +29,7 @@ jobs:
       # shared-cmake installs itself via its own action (HTTPS via the runner token). The @<sha> matches
       # MSC_REF above (kept for the SDK cache key); consumed thereafter via find_package.
       - name: Install mavericks-shared-cmake
-        uses: schmonz/mavericks-shared-cmake/.github/actions/install@8bc9fc38d40c40aaa5c95aefe21f29c64ce34d31  # mavericks-shared-cmake
+        uses: schmonz/mavericks-shared-cmake/.github/actions/install@ecace6c69ab7cdff3e2feea06155c7efc61ebbf2  # mavericks-shared-cmake
 
       - name: Version = VERSION file (tag must match)
         id: ver
