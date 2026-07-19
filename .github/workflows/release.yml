@@ -33,7 +33,7 @@ concurrency:
 env:
   # Shared 10.9 build machinery (find_package(MavericksSharedCMake) + the hoisted packaging helpers).
   # Pinned by SHA for reproducible builds. Bump deliberately to pull shared-machinery changes.
-  MSC_REF: 066c1f8827fb1be728f70735dbe17ae68e135ea6  # mavericks-shared-cmake
+  MSC_REF: 312389eb8b3ac24c8f89fad2a78c82bc4eeac8cd  # mavericks-shared-cmake
 
 jobs:
   build-macos:
@@ -44,7 +44,7 @@ jobs:
       # shared-cmake installs itself via its own action (HTTPS via the runner token). The @<sha> matches
       # MSC_REF above (kept for the SDK cache key); consumed thereafter via find_package.
       - name: Install mavericks-shared-cmake
-        uses: schmonz/mavericks-shared-cmake/.github/actions/install@066c1f8827fb1be728f70735dbe17ae68e135ea6  # mavericks-shared-cmake
+        uses: schmonz/mavericks-shared-cmake/.github/actions/install@312389eb8b3ac24c8f89fad2a78c82bc4eeac8cd  # mavericks-shared-cmake
 
       - name: Version = VERSION file (tag must match)
         id: ver
@@ -149,7 +149,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install mavericks-shared-cmake
-        uses: schmonz/mavericks-shared-cmake/.github/actions/install@066c1f8827fb1be728f70735dbe17ae68e135ea6  # mavericks-shared-cmake
+        uses: schmonz/mavericks-shared-cmake/.github/actions/install@312389eb8b3ac24c8f89fad2a78c82bc4eeac8cd  # mavericks-shared-cmake
       - uses: actions/download-artifact@v8
         with: { name: packaging-inputs, path: dl }
       - uses: actions/download-artifact@v8
