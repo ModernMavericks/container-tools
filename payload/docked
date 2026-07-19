@@ -1,0 +1,15 @@
+#!/bin/bash
+# docked -- run a one-off container with sensible defaults, bringing the Docker Machine up first.
+# Convenience wrapper after the design in Wowfunhappy's "Docker for Mavericks" DMG:
+#   docked [image] [command...]   ==   docker run in the default machine, $PWD mounted at /work.
+set -eu
+eval "$(docker-machine env default)"
+STATUS="$(docker-machine status)"
+if [ "$STATUS" = "Stopped" ]; then
+  docker-machine start || true
+  eval "$(docker-machine env default)"
+elif [ "$STATUS" != "Running" ]; then
+  echo "docked: Docker Machine 'default' is ${STATUS}" >&2
+  exit 1
+fi
+exec docker run --rm --network host --security-opt seccomp=unconfined --expose 8601 -v "$PWD:/work/" -t "$@"

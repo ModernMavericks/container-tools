@@ -1,0 +1,41 @@
+#!/bin/sh
+# Offer to roll existing docker-machine hosts onto the freshly-installed boot2docker.iso.
+# The updater runs this (as the user) after an install; it's also fine to run by hand.
+#
+# A host copies the iso at `docker-machine create` and boots that copy forever, so a package update that
+# refreshes /usr/local/share/mavericks-docker/boot2docker.iso does not reach a running host until you
+# `docker-machine upgrade` it (data disk preserved). This finds hosts on an older image and offers that.
+set -eu
+
+INSTALLED=/usr/local/share/mavericks-docker/boot2docker.iso
+[ -f "$INSTALLED" ] || exit 0
+command -v docker-machine >/dev/null 2>&1 || exit 0
+MACHDIR="$HOME/.docker/machine/machines"
+[ -d "$MACHDIR" ] || exit 0
+
+NEW=$(shasum -a 256 "$INSTALLED" | awk '{print $1}')
+stale=""
+for d in "$MACHDIR"/*/; do
+  iso="${d}boot2docker.iso"
+  [ -f "$iso" ] || continue
+  [ "$(shasum -a 256 "$iso" | awk '{print $1}')" = "$NEW" ] && continue
+  stale="$stale $(basename "$d")"
+done
+stale=$(echo "$stale" | sed 's/^ *//')
+[ -n "$stale" ] || exit 0   # every host already on the current image
+
+# Offer (default = Upgrade). AppleScript so it works from the background updater's GUI session.
+MSG="The Docker VM image was updated. Roll your host(s) onto it now?
+
+Your images, containers, and volumes are preserved (they live on a separate disk).
+
+Host(s):  $stale"
+btn=$(osascript -e "display dialog \"$MSG\" buttons {\"Later\", \"Upgrade\"} default button \"Upgrade\" with title \"Docker for Mavericks\" with icon note" \
+                -e "button returned of result" 2>/dev/null) || exit 0
+[ "$btn" = "Upgrade" ] || exit 0
+
+# Do it in a visible Terminal per host so the user sees progress and any Fusion prompts.
+for name in $stale; do
+  osascript -e "tell application \"Terminal\" to do script \"docker-machine stop $name ; docker-machine upgrade $name && docker-machine start $name\"" >/dev/null 2>&1 || true
+done
+osascript -e 'tell application "Terminal" to activate' >/dev/null 2>&1 || true
