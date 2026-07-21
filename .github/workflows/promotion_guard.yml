@@ -1,0 +1,54 @@
+name: promotion-guard
+
+# Backstop for the "never ship an unblessed iso" rule. GitHub can't pre-block a manual promote, so this
+# fires JUST AFTER a release becomes a full (non-pre) release -- including a prerelease flipped to full --
+# and checks that boot2docker's baseline is blessed at that tag. The blessing is done on the box by
+# cmake/approve_on_box.sh (boot-proof + re-baseline); this only verifies it happened. If the golden is
+# stale (the box step was skipped), it re-marks the release a prerelease and opens an issue, so an
+# unblessed boot2docker.iso can't quietly reach the /latest/ appcast feed.
+#
+# Cheap check: iso_fetch_verify compares the pinned upstream asset to components/boot2docker/golden.sha256
+# -- no iso build needed. A stale golden (the current-version-not-blessed case) fails it.
+
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: write   # to re-mark the release prerelease
+  issues: write     # to open the heads-up issue
+
+jobs:
+  boot2docker-blessed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: boot2docker baseline must be blessed for a full release
+        id: verify
+        run: |
+          if sh cmake/iso_fetch_verify.sh components/boot2docker; then
+            echo "blessed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "blessed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Demote + flag if the iso wasn't blessed
+        if: steps.verify.outputs.blessed == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          echo "::error::$TAG promoted with an unblessed boot2docker baseline -> re-marking prerelease"
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --prerelease
+          gh issue create -R "$GITHUB_REPOSITORY" \
+            --title "Release $TAG shipped an unblessed boot2docker iso -> re-marked prerelease" \
+            --body "$(printf '%s\n' \
+              "The boot2docker baseline (components/boot2docker/golden.sha256) is stale at \`$TAG\`, so the" \
+              "bundled iso was never boot-proofed/re-blessed. The release was re-marked **prerelease** to keep" \
+              "it off the /latest/ appcast feed." \
+              "" \
+              "To fix: run \`cmake/approve_on_box.sh $TAG\` on the box (boot-proof + re-bless), push, then promote again.")"
+          exit 1

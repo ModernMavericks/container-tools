@@ -1,0 +1,208 @@
+name: release
+
+# Build the 10.9-compatible docker toolchain (CLI + Compose + Machine) on macos-26, build the
+# boot2docker.iso on Linux, build the Sparkle updater, assemble + sign the product .pkg, and attach
+# the .pkg + signed appcast to a GitHub Release on v* tags.
+#
+# RELEASE GATING mirrors mavericks-swift: CI proves the build succeeds and the gates pass, but a
+# modern runner is structurally blind to 10.9-only bugs, so every release publishes as a PRERELEASE.
+# Acceptance is a MANUAL real-10.9 boot-test (install the .pkg, boot the iso, run the updater); once
+# it passes you promote the GitHub prerelease to a full release, which is what /latest/ (and therefore
+# the Sparkle appcast feed) resolves to.
+#
+# No PR merge gate. Nothing reaches users until the manual box boot-test blesses a prerelease, so we
+# don't block merges -- the push-to-main build is a SIGNAL (a bump that breaks the build/gates shows red
+# on main, fix before cutting a prerelease), not a barrier. (Also: a cloud PR gate can't validate the
+# iso anyway -- that needs the box -- so gating boot2docker bumps on it would wedge them forever.)
+
+on:
+  push:
+    branches: [main]        # signal: build+gate every main push (surfaces a bump that broke something)
+    tags: ['*-mavericks.*']  # tags additionally package, sign, and publish a prerelease
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Superseded runs cancel on the same ref: a PR's new commit cancels its prior run, and rapid main
+# merges cancel superseded main builds. Each tag is a unique ref, so a publish build is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      # shared-cmake installs itself via its own action (self-registering in the CMake user package
+      # registry); consumed thereafter via find_package. @v1 is the moving major tag (Renovate tracks it).
+      - name: Install mavericks-shared-cmake
+        uses: ModernMavericks/shared-cmake/.github/actions/install@v1
+
+      - name: Version = VERSION file (tag must match)
+        id: ver
+        run: |
+          VER=$(cat VERSION)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "$VER" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} != $VER (VERSION file)"; exit 1; fi
+
+      # The 10.9-correct Go toolchain (patched mavericks-golang cross .pkg; see the comment history).
+      - name: Install patched Go (mavericks-golang cross toolchain)
+        env:
+          GO_PKG_REF:    1.26.4-mavericks.1  # ModernMavericks/golang release tag
+          GO_PKG_SHA256: 7c5679339598f6672258611447c0f14dbcefe2abd8945b9825adf65523f0e7f9
+        run: |
+          ver="$GO_PKG_REF"
+          pkg="golang-go126-cross-${ver}-darwin-arm64.pkg"
+          curl -fL --retry 3 -o "$pkg" \
+            "https://github.com/ModernMavericks/golang/releases/download/${GO_PKG_REF}/${pkg}"
+          echo "${GO_PKG_SHA256}  ${pkg}" | shasum -a 256 -c -
+          sudo installer -pkg "$pkg" -target /
+          echo "/usr/local/go126-cross/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm the patched cross toolchain is on PATH
+        run: |
+          test "$(command -v go)" = /usr/local/go126-cross/bin/go
+          go version
+
+      - name: Cache the MacOSX10.9 SDK
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.sdk-cache
+          key: macosx10.9-sdk-v1   # the SDK is pinned inside fetch_sdk.sh; key is stable across shared-cmake bumps
+
+      - name: Build + gate (the SAME cmake build the Tahoe dry run runs)
+        env:
+          MAVERICKS_SDK_CACHE: ${{ github.workspace }}/.sdk-cache
+        run: |
+          cmake --preset cross
+          cmake --build --preset cross
+          ctest --preset cross
+
+      # Build the Sparkle updater .app on every build (catches updater breaks on PRs). The updater must
+      # NOT link any docker product (self-update circularity); its own binary is named
+      # ContainerToolsUpdater, so skip line 1 of otool before checking for a docker linkage.
+      - name: Build the Sparkle updater (must not link docker)
+        run: |
+          # The x86_64 Sparkle slice is auto-derived from the updater's CMAKE_OSX_ARCHITECTURES.
+          cmake -S updater -B build-updater -DCMAKE_OBJC_COMPILER=/usr/bin/clang
+          cmake --build build-updater
+          BIN=build-updater/ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater
+          otool -L "$BIN" | tee /tmp/o.txt
+          if otool -L "$BIN" | tail -n +2 | grep -iq docker; then
+            echo "::error::updater links a docker product (self-update circularity)"; exit 1; fi
+
+      # On tags: bundle the packaging inputs into ONE tarball so executable bits (binaries, the .app's
+      # Mach-Os, the signer) survive the artifact round-trip -- artifacts otherwise drop file modes.
+      - name: Stage + upload packaging inputs
+        if: github.ref_type == 'tag'
+        run: |
+          export COPYFILE_DISABLE=1
+          mkdir -p stage
+          cp build-cross/docker-cli/docker            stage/docker
+          cp build-cross/docker-compose/docker-compose stage/docker-compose
+          cp build-cross/docker-machine/docker-machine stage/docker-machine
+          cp build-cross/lazydocker/lazydocker        stage/lazydocker
+          cp -R build-updater/ContainerToolsUpdater.app stage/ContainerToolsUpdater.app
+          find stage -name '._*' -delete 2>/dev/null || true
+          tar -C stage -czf packaging-inputs.tgz .
+      - name: Upload packaging inputs (tags only)
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: packaging-inputs
+          path: packaging-inputs.tgz
+
+  # boot2docker.iso on native Linux/Docker (macos-26 can't build it). We only BUILD the iso here for
+  # the .pkg. The iso reproducibility gates (iso_fetch_verify / iso_fingerprint) and the boot-proof are
+  # owned by boot2docker.yml + the box -- running them here would duplicate that and couple the release
+  # to boot2docker baseline maintenance. Acceptance for the shipped iso is the manual real-10.9 boot-test.
+  build-iso:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the boot2docker iso (same cmake iso build the box runs)
+        run: |
+          cmake --preset iso
+          cmake --build --preset iso
+      - uses: actions/upload-artifact@v7
+        with:
+          name: boot2docker-iso
+          path: build-iso/boot2docker/boot2docker.iso
+
+  # Assemble + sign the product .pkg and render the signed appcast. Needs the mac binaries/updater and
+  # the iso; runs on macos-26 for pkgbuild/productbuild.
+  package:
+    if: github.ref_type == 'tag'
+    needs: [build-macos, build-iso]
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install mavericks-shared-cmake
+        uses: ModernMavericks/shared-cmake/.github/actions/install@v1
+      - uses: actions/download-artifact@v8
+        with: { name: packaging-inputs, path: dl }
+      - uses: actions/download-artifact@v8
+        with: { name: boot2docker-iso, path: iso }
+
+      - name: Assemble + sign the .pkg, render the appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}   # sign_and_appcast.sh fetches ed25519-sign via `gh` -> needs auth (else 403 rate-limit)
+        run: |
+          [ -n "$SPARKLE_PRIVATE_KEY" ] || { echo "::error::SPARKLE_PRIVATE_KEY secret not set"; exit 1; }
+          # Resolve the installed shared-cmake scripts dir via the CMake user package registry.
+          SH="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
+          [ -d "$SH" ] || { echo "::error::shared-cmake scripts not found at $SH"; exit 1; }
+          VER=$(cat VERSION)
+          mkdir -p in dist
+          tar -C in -xzf dl/packaging-inputs.tgz      # restores executable bits
+          PKG="dist/container-tools-$VER.pkg"
+
+          MSC_SCRIPTS="$SH" sh cmake/package_pkg.sh --out "$PKG" --version "$VER" \
+            --docker in/docker --compose in/docker-compose --machine in/docker-machine \
+            --lazydocker in/lazydocker --iso iso/boot2docker.iso \
+            --updater-app in/ContainerToolsUpdater.app \
+            --docked payload/docked --sync-helper payload/container-tools-sync-image \
+            --readme payload/README.txt \
+            --resources cmake/resources --welcome Welcome.html
+
+          # Sign the .pkg + render the signed appcast; sign_and_appcast.sh auto-fetches the prebuilt
+          # ed25519-sign. The enclosure points at the versioned release asset; the client feed is
+          # /latest/ (prereleases excluded), so nothing auto-updates until promoted to a full release.
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/$VER/$(basename "$PKG")"
+          sh "$SH/sign_and_appcast.sh" \
+            --channel-title "Container Tools for Mavericks" \
+            --version "$VER" --pkg-url "$URL" --min-os 10.9.5 \
+            --notes-file "docs/release-notes/$VER.md" --pkg "$PKG" > dist/appcast.xml
+          (cd dist && shasum -a 256 ./*.pkg > SHA256SUMS)
+          echo "=== appcast.xml ==="; cat dist/appcast.xml
+      - uses: actions/upload-artifact@v7
+        with:
+          name: container-tools-pkg
+          path: |
+            dist/*.pkg
+            dist/appcast.xml
+            dist/SHA256SUMS
+
+  # All-or-nothing publish: the ONLY writer to Releases, gated on package. Always a PRERELEASE --
+  # promote to a full release by hand after the manual real-10.9 boot-test.
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { path: dist, merge-multiple: true }
+      - name: Publish PRERELEASE (promote after the manual 10.9 boot-test)
+        uses: softprops/action-gh-release@v3
+        with:
+          prerelease: true
+          files: |
+            dist/*.pkg
+            dist/appcast.xml
+            dist/SHA256SUMS
