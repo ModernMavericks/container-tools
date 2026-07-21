@@ -12,3 +12,4 @@ dist/
 # macOS turds
 .DS_Store
 ._*
+.superpowers/
