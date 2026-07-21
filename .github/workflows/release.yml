@@ -13,7 +13,7 @@ name: release
 on:
   push:
     branches: [main]        # signal: build+gate every main push (surfaces a bump that broke something)
-    tags: ['*-mavericks.*']  # tags additionally package, sign, and publish a prerelease
+    tags: ['*-mavericks.*']  # tags additionally package, sign, and publish a release
   workflow_dispatch:
 
 permissions:
@@ -168,7 +168,7 @@ jobs:
 
           # Sign the .pkg + render the signed appcast; sign_and_appcast.sh auto-fetches the prebuilt
           # ed25519-sign. The enclosure points at the versioned release asset; the client feed is
-          # /latest/ (prereleases excluded), so nothing auto-updates until promoted to a full release.
+          # /latest/ resolves to this full release immediately, so Sparkle clients pick it up right away.
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/$VER/$(basename "$PKG")"
           sh "$SH/sign_and_appcast.sh" \
             --channel-title "Container Tools for Mavericks" \
