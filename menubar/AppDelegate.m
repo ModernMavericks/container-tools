@@ -7,6 +7,7 @@
 @property (strong) NSStatusItem *statusItem;
 @property (strong) MDController *controller;
 @property (strong) MDWatchers *watchers;
+@property (assign) BOOL vmLoginOn;   // cached "Start Docker at login" state
 @end
 
 @implementation AppDelegate
@@ -36,7 +37,12 @@
   [self.statusItem setToolTip:[@"Docker: " stringByAppendingString:state]];
   if (self.watchers)
     [self.watchers watchVmxPid:([state isEqualToString:@"running"] ? [self.controller vmxPid] : 0)];
-  [self rebuildMenu];
+  [self rebuildMenuForState:state];
+  // Refresh the cached login state off the main thread; rebuild only if it changed.
+  [self.controller runVerb:@"login-status" completion:^(NSString *out, int code) {
+    BOOL on = [out isEqualToString:@"on"];
+    if (on != self.vmLoginOn) { self.vmLoginOn = on; [self rebuildMenuForState:[self.controller currentState]]; }
+  }];
 }
 
 - (NSString *)humanState:(NSString *)s {
@@ -48,8 +54,7 @@
   return @"Docker: (error)";
 }
 
-- (void)rebuildMenu {
-  NSString *state = [self.controller currentState];
+- (void)rebuildMenuForState:(NSString *)state {
   NSMenu *m = [[NSMenu alloc] init];
 
   NSMenuItem *header = [m addItemWithTitle:[self humanState:state] action:NULL keyEquivalent:@""];
@@ -76,7 +81,7 @@
   [m addItem:[NSMenuItem separatorItem]];
   NSMenuItem *vmLogin = [m addItemWithTitle:@"Start Docker at Login"
                                      action:@selector(toggleVMLogin:) keyEquivalent:@""];
-  vmLogin.state = [[self ctlLoginStatus] isEqualToString:@"on"] ? NSOnState : NSOffState;
+  vmLogin.state = self.vmLoginOn ? NSOnState : NSOffState;
   NSMenuItem *appLogin = [m addItemWithTitle:@"Open at Login"
                                       action:@selector(toggleAppLogin:) keyEquivalent:@""];
   appLogin.state = [MDLoginItem isEnabled] ? NSOnState : NSOffState;
@@ -105,35 +110,36 @@
   [[NSWorkspace sharedWorkspace] openFile:log withApplication:@"Console"];
 }
 
-- (NSString *)ctlLoginStatus {
-  NSTask *t = [[NSTask alloc] init];
-  t.launchPath = @"/usr/local/bin/docker-machine-ctl";
-  t.arguments = @[@"login-status"];
-  NSPipe *p = [NSPipe pipe]; t.standardOutput = p; t.standardError = [NSPipe pipe];
-  @try { [t launch]; } @catch (NSException *e) { return @"off"; }
-  NSData *d = [[p fileHandleForReading] readDataToEndOfFile]; [t waitUntilExit];
-  return [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]
-          stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-}
 - (void)toggleVMLogin:(id)s {
-  BOOL on = [[self ctlLoginStatus] isEqualToString:@"on"];
+  BOOL on = self.vmLoginOn;
   [self.controller runVerb:(on ? @"login-off" : @"login-on") completion:^(NSString *o, int c) { [self refresh]; }];
 }
 - (void)toggleAppLogin:(id)s {
   [MDLoginItem setEnabled:![MDLoginItem isEnabled]];
-  [self rebuildMenu];
+  [self rebuildMenuForState:[self.controller currentState]];
 }
 
 - (NSImage *)iconForState:(NSString *)state {
   NSImage *img = [NSImage imageWithSize:NSMakeSize(18, 18) flipped:NO
       drawingHandler:^BOOL(NSRect r) {
-    NSRect o = NSInsetRect(r, 3, 3);
-    NSBezierPath *p = [NSBezierPath bezierPathWithOvalInRect:o];
     [[NSColor blackColor] set];
-    if ([state isEqualToString:@"running"]) { [p fill]; }
-    else if ([state isEqualToString:@"working"] || [state isEqualToString:@"creating"]) {
-      [p stroke]; NSBezierPath *h = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(o, 4, 4)]; [h fill];
-    } else { p.lineWidth = 1.5; [p stroke]; }
+    // A whale silhouette (rounded body + tail fluke) — a nod to the Docker mark.
+    NSBezierPath *whale = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(2, 5, 11, 7)
+                                                          xRadius:3.5 yRadius:3.5];
+    NSBezierPath *tail = [NSBezierPath bezierPath];
+    [tail moveToPoint:NSMakePoint(11.5, 8.5)];
+    [tail lineToPoint:NSMakePoint(16.5, 5)];
+    [tail lineToPoint:NSMakePoint(16.5, 12)];
+    [tail closePath];
+    [whale appendBezierPath:tail];
+    if ([state isEqualToString:@"running"]) {
+      [whale fill];                                  // solid = up
+    } else if ([state isEqualToString:@"working"] || [state isEqualToString:@"creating"]) {
+      whale.lineWidth = 1.0; [whale stroke];         // outline + a bubble = transitioning
+      [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(6.75, 7.5, 2.5, 2.5)] fill];
+    } else {
+      whale.lineWidth = 1.5; [whale stroke];         // outline = down / needs setup
+    }
     return YES;
   }];
   return img;
