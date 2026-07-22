@@ -1,9 +1,11 @@
 #import "AppDelegate.h"
 #import "MDController.h"
+#import "MDWatchers.h"
 
 @interface AppDelegate ()
 @property (strong) NSStatusItem *statusItem;
 @property (strong) MDController *controller;
+@property (strong) MDWatchers *watchers;
 @end
 
 @implementation AppDelegate
@@ -12,6 +14,10 @@
   self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
   self.controller = [[MDController alloc] init];
   [self refresh];
+  __weak AppDelegate *weak = self;
+  self.watchers = [[MDWatchers alloc] initWithStatePath:self.controller.stateFilePath
+                                               onChange:^{ [weak refresh]; }];
+  [self.watchers start];
 }
 
 - (void)refresh {
@@ -20,6 +26,8 @@
   icon.template = YES;
   [self.statusItem setImage:icon];
   [self.statusItem setToolTip:[@"Docker: " stringByAppendingString:state]];
+  if (self.watchers)
+    [self.watchers watchVmxPid:([state isEqualToString:@"running"] ? [self.controller vmxPid] : 0)];
   [self rebuildMenu];
 }
 
