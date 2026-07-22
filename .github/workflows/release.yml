@@ -48,7 +48,7 @@ jobs:
       - name: Install patched Go (mavericks-golang cross toolchain)
         env:
           GO_PKG_REF:    1.26.4-mavericks.1  # ModernMavericks/golang release tag
-          GO_PKG_SHA256: 7c5679339598f6672258611447c0f14dbcefe2abd8945b9825adf65523f0e7f9
+          GO_PKG_SHA256: 5d800b803562cbfbfec2ed36b06134dab041609947dc105ab3f121ade470419e
         run: |
           ver="$GO_PKG_REF"
           pkg="golang-go126-cross-${ver}-darwin-arm64.pkg"
