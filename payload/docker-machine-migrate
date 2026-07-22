@@ -1,0 +1,63 @@
+#!/bin/sh
+# docker-machine-migrate — one-time, in-place rename of the legacy 'default' Docker VM to
+# the current machine name ($MACHINE), preserving the data disk. Run with the VM STOPPED.
+# Leaves a machines/default -> machines/$MACHINE symlink as a compat crutch. Does NOT edit
+# Fusion's inventory (prints guidance instead). Idempotent-ish: no-op if already migrated.
+set -u
+. "${MAVERICKS_DOCKER_COMMON:-/usr/local/libexec/modernmavericks/docker/docker-machine-common.sh}"
+
+OLD=default
+NEW=$MACHINE
+
+[ "$NEW" = "$OLD" ] && { echo "migrate: machine is already '$OLD'; nothing to do" >&2; exit 0; }
+[ -d "$MACHDIR/$OLD" ] && [ ! -L "$MACHDIR/$OLD" ] || { echo "migrate: no legacy '$OLD' machine to migrate" >&2; exit 0; }
+[ -e "$MACHDIR/$NEW" ] && { echo "migrate: '$NEW' already exists; refusing to overwrite" >&2; exit 1; }
+
+if docker-machine status "$OLD" 2>/dev/null | grep -q '^Running$'; then
+  echo "migrate: stop the VM first:  docker-machine stop $OLD" >&2; exit 1
+fi
+
+# Back up the files we edit in place (the mv of large files is reversible; seds are not).
+cp "$MACHDIR/$OLD/config.json" "$MACHDIR/$OLD/config.json.premigrate" 2>/dev/null || true
+[ -f "$MACHDIR/$OLD/$OLD.vmx" ] && cp "$MACHDIR/$OLD/$OLD.vmx" "$MACHDIR/$OLD/$OLD.vmx.premigrate" 2>/dev/null || true
+
+# 1. Rename the machine directory.
+mv "$MACHDIR/$OLD" "$MACHDIR/$NEW" || { echo "migrate: directory rename failed" >&2; exit 1; }
+d="$MACHDIR/$NEW"
+
+# 2. Rename the VM files: $OLD.EXT -> $NEW.EXT (default.vmx, default.vmdk, ...). Skip our backups.
+for f in "$d/$OLD".*; do
+  [ -e "$f" ] || continue
+  case "$f" in *.premigrate) continue ;; esac
+  ext=${f##*/"$OLD".}
+  mv "$f" "$d/$NEW.$ext"
+done
+
+# 3. Rewrite config.json: store path, machine name, and any $OLD.<ext> filename refs.
+if [ -f "$d/config.json" ]; then
+  sed -i '' \
+    -e "s|machines/$OLD|machines/$NEW|g" \
+    -e "s|$OLD\\.\\([A-Za-z][A-Za-z]*\\)|$NEW.\\1|g" \
+    -e "s|\"MachineName\": \"$OLD\"|\"MachineName\": \"$NEW\"|g" \
+    "$d/config.json"
+fi
+
+# 4. Rewrite the .vmx: file references ($OLD.vmdk/.nvram/...) and the Fusion display label.
+if [ -f "$d/$NEW.vmx" ]; then
+  sed -i '' \
+    -e "s|$OLD\\.\\([A-Za-z][A-Za-z]*\\)|$NEW.\\1|g" \
+    -e "s|displayName = \"$OLD\"|displayName = \"$NEW\"|" \
+    "$d/$NEW.vmx"
+fi
+
+# 5. Compat crutch: old name still resolves for `docker-machine ... default`.
+ln -s "$NEW" "$MACHDIR/$OLD" 2>/dev/null || true
+
+echo "migrate: renamed '$OLD' -> '$NEW'." >&2
+echo "  - Verify:  docker-machine env $NEW  &&  docker-machine start $NEW" >&2
+echo "  - A '$MACHDIR/$OLD' symlink was left for compatibility; delete it once your" >&2
+echo "    scripts / DOCKER_MACHINE_NAME use '$NEW'." >&2
+echo "  - Fusion may show a stale '$OLD' entry: remove it from the VM Library (keep files);" >&2
+echo "    the renamed VM re-registers on next start." >&2
+echo "  - Backups left in $d: config.json.premigrate, $OLD.vmx.premigrate." >&2
+exit 0

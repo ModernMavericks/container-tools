@@ -20,6 +20,7 @@ case "${1:-}" in
   login-on)  launchctl load -w "$AGENT_PLIST" >>"$LOG" 2>&1 ;;
   login-off) launchctl unload -w "$AGENT_PLIST" >>"$LOG" 2>&1 ;;
   setup)   exec docker-machine-bootstrap ;;
+  migrate) exec docker-machine-migrate ;;
   vmx-pid) pgrep -f "machines/$MACHINE/.*\.vmx" 2>/dev/null | head -1 || true ;;
-  *) echo "usage: docker-machine-ctl {status|start|stop|restart|login-status|login-on|login-off|setup|vmx-pid}" >&2; exit 2 ;;
+  *) echo "usage: docker-machine-ctl {status|start|stop|restart|login-status|login-on|login-off|setup|migrate|vmx-pid}" >&2; exit 2 ;;
 esac
