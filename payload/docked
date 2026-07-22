@@ -2,8 +2,9 @@
 # docked -- run a one-off container with sensible defaults, bringing the Docker VM up first.
 # Convenience wrapper after the design in Wowfunhappy's "Container Tools for Mavericks" DMG:
 #   docked [image] [command...]   ==   docker run with $PWD mounted at /work.
-# Addressing is handled by the managed `mavericks` docker context (set by the bootstrap),
-# so no docker-machine env eval is needed; we just make sure the VM is up.
+# Targets the managed `mavericks` docker context explicitly (per-invocation; no global
+# `docker context use`), so it always reaches the managed VM regardless of the user's
+# currently-selected context. Requires the one-time setup (bootstrap) to have created it.
 set -eu
 docker-machine-ctl start >/dev/null 2>&1 || true
-exec docker run --rm --network host --security-opt seccomp=unconfined --expose 8601 -v "$PWD:/work/" -t "$@"
+exec docker --context mavericks run --rm --network host --security-opt seccomp=unconfined --expose 8601 -v "$PWD:/work/" -t "$@"

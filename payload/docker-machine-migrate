@@ -28,6 +28,7 @@ mv "$MACHDIR/$OLD" "$MACHDIR/$NEW" || { echo "migrate: directory rename failed" 
 d="$MACHDIR/$NEW"
 
 # 2. Rename the VM files: $OLD.EXT -> $NEW.EXT (default.vmx, default.vmdk, ...). Skip our backups.
+# Assumes boot2docker's single monolithic .vmdk and a stopped VM (no split disks / .lck).
 for f in "$d/$OLD".*; do
   [ -e "$f" ] || continue
   case "$f" in *.premigrate) continue ;; esac
