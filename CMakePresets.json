@@ -6,19 +6,19 @@
       "name": "native",
       "displayName": "native — build on Mavericks 10.9 (system clang)",
       "binaryDir": "${sourceDir}/build-native",
-      "cacheVariables": { "MVD_EXPECTED_MODE": "native" }
+      "cacheVariables": { "MAVERICKS_DOCKER_EXPECTED_MODE": "native" }
     },
     {
       "name": "cross",
       "displayName": "cross — build for Mavericks 10.9 on a modern host",
       "binaryDir": "${sourceDir}/build-cross",
-      "cacheVariables": { "MVD_EXPECTED_MODE": "cross" }
+      "cacheVariables": { "MAVERICKS_DOCKER_EXPECTED_MODE": "cross" }
     },
     {
       "name": "iso",
       "displayName": "iso — build boot2docker.iso via Docker (box or linux)",
       "binaryDir": "${sourceDir}/build-iso",
-      "cacheVariables": { "MVD_EXPECTED_MODE": "iso" }
+      "cacheVariables": { "MAVERICKS_DOCKER_EXPECTED_MODE": "iso" }
     }
   ],
   "buildPresets": [

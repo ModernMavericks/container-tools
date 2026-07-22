@@ -16,7 +16,7 @@ cd "$repo"
 
 REPO_SLUG="ModernMavericks/container-tools"
 ISO=/usr/local/share/modernmavericks/container-tools/boot2docker.iso
-MACHINE="${MVD_APPROVE_MACHINE:-mvd-approve}"
+MACHINE="${MAVERICKS_DOCKER_APPROVE_MACHINE:-container-tools-approve}"
 YES=0; TAG=""
 for a in "$@"; do case "$a" in --yes) YES=1;; -*) echo "unknown flag: $a" >&2; exit 2;; *) TAG=$a;; esac; done
 [ -n "$TAG" ] || TAG="v$(cat VERSION)"
@@ -24,7 +24,7 @@ for a in "$@"; do case "$a" in --yes) YES=1;; -*) echo "unknown flag: $a" >&2; e
 need() { command -v "$1" >/dev/null 2>&1 || { echo "approve: missing '$1' on PATH" >&2; exit 1; }; }
 for t in gh git docker-machine docker curl shasum; do need "$t"; done
 
-work=$(mktemp -d "${TMPDIR:-/tmp}/mvd-approve.XXXXXX")
+work=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-approve.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 echo "== 1/5  install the $TAG prerelease .pkg =="

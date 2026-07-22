@@ -8,15 +8,15 @@ BOOT="$ROOT/payload/docker-machine-bootstrap"
 fail() { echo "docker_bootstrap_test: FAIL: $*" >&2; exit 1; }
 
 setup() {
-  WORK=$(mktemp -d "${TMPDIR:-/tmp}/mvd-boot.XXXXXX")
+  WORK=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-boot.XXXXXX")
   BIN="$WORK/bin"; mkdir -p "$BIN"
   export HOME="$WORK/home"; mkdir -p "$HOME"
-  export MVD_STATE_DIR="$WORK/state"
-  export MVD_LOG="$WORK/boot.log"
-  export MVD_ISO="$WORK/iso"; : > "$MVD_ISO"
-  export MVD_NONINTERACTIVE=1
-  export MVD_PROFILES="$HOME/.bash_profile"
-  export MVD_FUSION_PRESENT=1
+  export MAVERICKS_DOCKER_STATE_DIR="$WORK/state"
+  export MAVERICKS_DOCKER_LOG="$WORK/boot.log"
+  export MAVERICKS_DOCKER_ISO="$WORK/iso"; : > "$MAVERICKS_DOCKER_ISO"
+  export MAVERICKS_DOCKER_NONINTERACTIVE=1
+  export MAVERICKS_DOCKER_PROFILES="$HOME/.bash_profile"
+  export MAVERICKS_DOCKER_FUSION_PRESENT=1
   export DM_LOG="$WORK/dm.args"; : > "$DM_LOG"
   export DOCKER_LOG="$WORK/docker.args"; : > "$DOCKER_LOG"
   export OSA_LOG="$WORK/osa.args"; : > "$OSA_LOG"
@@ -30,14 +30,14 @@ EOF
 }
 teardown() { PATH=$OLDPATH; rm -rf "$WORK"; }
 
-# docker-machine stub: \$1 status -> echoes \$MVD_TEST_STATUS (empty => exit 1);
+# docker-machine stub: \$1 status -> echoes \$MAVERICKS_DOCKER_TEST_STATUS (empty => exit 1);
 # create/start/env recorded; env prints canned exports.
 make_dm() {
   cat > "$BIN/docker-machine" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >> "$DM_LOG"
 case "\$1" in
-  status) [ -n "\${MVD_TEST_STATUS:-}" ] && { echo "\${MVD_TEST_STATUS}"; exit 0; }; exit 1 ;;
+  status) [ -n "\${MAVERICKS_DOCKER_TEST_STATUS:-}" ] && { echo "\${MAVERICKS_DOCKER_TEST_STATUS}"; exit 0; }; exit 1 ;;
   env) echo 'export DOCKER_TLS_VERIFY="1"'
        echo 'export DOCKER_HOST="tcp://192.168.237.131:2376"'
        echo "export DOCKER_CERT_PATH=\"$HOME/.docker/machine/machines/default\""
@@ -63,7 +63,7 @@ EOF
 # --- Case: Fusion absent -> notify, exit 0, no docker-machine calls ---
 case_fusion_absent() {
   setup; make_dm; make_docker
-  MVD_FUSION_PRESENT=0 MVD_TEST_STATUS= sh "$BOOT" || fail "should exit 0 when Fusion absent"
+  MAVERICKS_DOCKER_FUSION_PRESENT=0 MAVERICKS_DOCKER_TEST_STATUS= sh "$BOOT" || fail "should exit 0 when Fusion absent"
   [ -s "$DM_LOG" ] && fail "must not call docker-machine when Fusion absent"
   grep -q 'Fusion' "$OSA_LOG" || fail "expected a Fusion notification"
   teardown
@@ -120,7 +120,7 @@ case_start
 # --- Case: running -> create context from docker-machine env, then use it ---
 case_context_create() {
   setup; make_dm; make_docker
-  MVD_TEST_STATUS=Running sh "$BOOT" || fail "running path should exit 0"
+  MAVERICKS_DOCKER_TEST_STATUS=Running sh "$BOOT" || fail "running path should exit 0"
   grep -q 'context create mavericks' "$DOCKER_LOG" || fail "expected context create"
   grep -q 'host=tcp://192.168.237.131:2376' "$DOCKER_LOG" || fail "context must carry env host"
   grep -q 'ca=.*/ca.pem' "$DOCKER_LOG" || fail "context must carry ca cert path"
@@ -142,7 +142,7 @@ case "\$1 \$2" in
 esac
 EOF
   chmod +x "$BIN/docker"
-  MVD_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0"
+  MAVERICKS_DOCKER_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0"
   grep -q 'context update' "$DOCKER_LOG" && fail "must not update when host unchanged"
   grep -q 'context use mavericks' "$DOCKER_LOG" || fail "expected context use"
   teardown
@@ -155,7 +155,7 @@ case_context_current
 case_env_override() {
   setup; make_dm; make_docker
   printf '%s\n' 'eval "$(docker-machine env default)"' > "$HOME/.bash_profile"
-  MVD_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0"
+  MAVERICKS_DOCKER_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0"
   grep -q 'overrides' "$OSA_LOG" || fail "expected env-override notification"
   teardown
 }
@@ -164,7 +164,7 @@ case_env_override() {
 case_env_clean() {
   setup; make_dm; make_docker
   printf '%s\n' 'export PS1="$ "' > "$HOME/.bash_profile"
-  MVD_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0"
+  MAVERICKS_DOCKER_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0"
   grep -q 'overrides' "$OSA_LOG" && fail "must not warn on a clean profile"
   teardown
 }
@@ -175,7 +175,7 @@ case_env_clean
 # --- Case: interactive create -> Terminal do-script + lock acquired ---
 case_interactive_create() {
   setup; make_docker
-  unset MVD_NONINTERACTIVE
+  unset MAVERICKS_DOCKER_NONINTERACTIVE
   cat > "$BIN/docker-machine" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >> "$DM_LOG"
@@ -185,7 +185,7 @@ EOF
   sh "$BOOT" || fail "interactive create should exit 0"
   grep -q 'do script' "$OSA_LOG" || fail "expected a Terminal do-script"
   grep -q 'docker-machine create' "$OSA_LOG" || fail "Terminal must run docker-machine create"
-  [ -d "$MVD_STATE_DIR/creating.lock" ] || fail "interactive create must hold the lock"
+  [ -d "$MAVERICKS_DOCKER_STATE_DIR/creating.lock" ] || fail "interactive create must hold the lock"
   teardown
 }
 
@@ -198,7 +198,7 @@ printf '%s\n' "\$*" >> "$DM_LOG"
 case "\$1" in status) exit 1 ;; esac
 EOF
   chmod +x "$BIN/docker-machine"
-  mkdir -p "$MVD_STATE_DIR/creating.lock"
+  mkdir -p "$MAVERICKS_DOCKER_STATE_DIR/creating.lock"
   sh "$BOOT" || fail "should exit 0 when create locked"
   grep -q 'create' "$DM_LOG" && fail "must not create while lock held"
   grep -q 'docker-machine create' "$OSA_LOG" && fail "must not spawn create Terminal while lock held"
@@ -220,8 +220,8 @@ case "\$1" in
 esac
 EOF
   chmod +x "$BIN/docker-machine"
-  mkdir -p "$MVD_STATE_DIR/creating.lock"
-  touch -t 200001010000 "$MVD_STATE_DIR/creating.lock"
+  mkdir -p "$MAVERICKS_DOCKER_STATE_DIR/creating.lock"
+  touch -t 200001010000 "$MAVERICKS_DOCKER_STATE_DIR/creating.lock"
   sh "$BOOT" || fail "should exit 0 on stale lock"
   grep -q 'create -d vmwarefusion' "$DM_LOG" || fail "stale lock must be reclaimed and create proceed"
   teardown

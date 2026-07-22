@@ -5,8 +5,8 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN="${1:-$ROOT/build/docker-cli/docker}"
 [ -x "$BIN" ] || { echo "build docker-cli first (cmake --build <dir>)" >&2; exit 1; }
-REF=$(mktemp -d "${TMPDIR:-/tmp}/mvd-char.XXXXXX")
-TAMPERED=$(mktemp -d "${TMPDIR:-/tmp}/mvd-char-tamper.XXXXXX")
+REF=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-char.XXXXXX")
+TAMPERED=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-char-tamper.XXXXXX")
 trap 'rm -rf "$REF" "$TAMPERED"' EXIT   # one handler — a second trap would replace this and leak $REF
 sh "$ROOT/cmake/characterize_build.sh" emit "$BIN" "$REF"
 sh "$ROOT/cmake/characterize_build.sh" compare "$REF" "$BIN"

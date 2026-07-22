@@ -5,7 +5,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FP="$ROOT/cmake/iso_fingerprint.sh"
 [ -f "$FP" ] || { echo "missing $FP" >&2; exit 1; }
 sh -n "$FP"
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/mvd-fptest.XXXXXX")
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-fptest.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 iso="$tmp/fake.iso"
 # 40KB of zeros, then version tokens near the end (strings-greppable).

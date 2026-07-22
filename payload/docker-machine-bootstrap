@@ -1,17 +1,17 @@
 #!/bin/sh
 # docker-machine-bootstrap — bring the Docker VM up and keep the docker CLI pointed at it,
 # with no shell wiring. Idempotent; always exits 0 (safe for a LaunchAgent on a timer).
-# Test seams (env; real defaults otherwise): MVD_ISO MVD_LOG MVD_STATE_DIR MVD_PROFILES
-# MVD_FUSION_PRESENT MVD_NONINTERACTIVE
+# Test seams (env; real defaults otherwise): MAVERICKS_DOCKER_ISO MAVERICKS_DOCKER_LOG MAVERICKS_DOCKER_STATE_DIR MAVERICKS_DOCKER_PROFILES
+# MAVERICKS_DOCKER_FUSION_PRESENT MAVERICKS_DOCKER_NONINTERACTIVE
 set -u
 
 MACHINE=default
 CONTEXT=mavericks
 SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
-ISO=${MVD_ISO:-/usr/local/share/modernmavericks/container-tools/boot2docker.iso}
-LOG=${MVD_LOG:-$HOME/Library/Logs/container-tools/bootstrap.log}
-STATE_DIR=${MVD_STATE_DIR:-$HOME/Library/Application Support/container-tools}
-PROFILES=${MVD_PROFILES:-$HOME/.bash_profile $HOME/.profile $HOME/.zshrc $HOME/.bashrc}
+ISO=${MAVERICKS_DOCKER_ISO:-/usr/local/share/modernmavericks/container-tools/boot2docker.iso}
+LOG=${MAVERICKS_DOCKER_LOG:-$HOME/Library/Logs/container-tools/bootstrap.log}
+STATE_DIR=${MAVERICKS_DOCKER_STATE_DIR:-$HOME/Library/Application Support/container-tools}
+PROFILES=${MAVERICKS_DOCKER_PROFILES:-$HOME/.bash_profile $HOME/.profile $HOME/.zshrc $HOME/.bashrc}
 LOCK="$STATE_DIR/creating.lock"
 
 log() {
@@ -28,8 +28,8 @@ notify() { # key title message  (throttled to once/day per key)
 }
 
 fusion_present() {
-  [ "${MVD_FUSION_PRESENT:-}" = 0 ] && return 1
-  [ "${MVD_FUSION_PRESENT:-}" = 1 ] && return 0
+  [ "${MAVERICKS_DOCKER_FUSION_PRESENT:-}" = 0 ] && return 1
+  [ "${MAVERICKS_DOCKER_FUSION_PRESENT:-}" = 1 ] && return 0
   [ -d "/Applications/VMware Fusion.app" ] || command -v vmrun >/dev/null 2>&1
 }
 
@@ -51,7 +51,7 @@ create_machine() {
   mkdir -p "$STATE_DIR" 2>/dev/null || true
   mkdir "$LOCK" 2>/dev/null || { log "create lock held; skipping create"; return 0; }
   log "creating machine 'default'"
-  if [ "${MVD_NONINTERACTIVE:-}" = 1 ]; then
+  if [ "${MAVERICKS_DOCKER_NONINTERACTIVE:-}" = 1 ]; then
     docker-machine create -d vmwarefusion --vmwarefusion-boot2docker-url "$ISO" "$MACHINE" >>"$LOG" 2>&1
     rmdir "$LOCK" 2>/dev/null || true
   else
@@ -108,7 +108,7 @@ main() {
   if [ -z "$_status" ]; then
     create_machine
     # Interactive create runs in a Terminal (chained to re-run SELF); nothing more to do now.
-    [ "${MVD_NONINTERACTIVE:-}" = 1 ] || exit 0
+    [ "${MAVERICKS_DOCKER_NONINTERACTIVE:-}" = 1 ] || exit 0
     _status=$(machine_status)
   fi
   [ "$_status" = "Running" ] || docker-machine start "$MACHINE" >>"$LOG" 2>&1 || true

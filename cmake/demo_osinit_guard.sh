@@ -15,7 +15,7 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd); . "$(dirname "$0")/common.sh"
 GO=${GO:-$([ -x /opt/pkg/go126/bin/go ] && echo /opt/pkg/go126/bin/go || command -v go)}
 export GO111MODULE=off  # trivial single-file stdlib probes; avoid go.mod requirement
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/mvd-osinit.XXXXXX"); trap 'rm -rf "$WORK"' EXIT
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-osinit.XXXXXX"); trap 'rm -rf "$WORK"' EXIT
 # import "C" forces cgo/external linking so CGO_LDFLAGS (incl. the shim) apply,
 # exactly like docker. osinit_hack runs at startup; the fork+exec exercises the
 # path it protects. Success = no launch fault and no hang.
@@ -41,7 +41,7 @@ echo "guard says: $guard"
 # --- RUN check on the native arch (proves no fault / no regression) ---
 # On the 10.9 box the shim supplies clock_gettime et al.; modern macOS needs none.
 CGO=1; LD="-mmacosx-version-min=10.9 -Wl,-undefined,dynamic_lookup"
-if [ "$(mvd_mode)" = native ]; then
+if [ "$(mavericks_docker_mode)" = native ]; then
   A="$ROOT/build/legacy-support/lib/libMacportsLegacySupport.a"
   [ -f "$A" ] || { echo "build the shim first (cmake --build <dir>); need $A"; exit 2; }
   CC=${CC:-/usr/bin/clang}; LD="$A -lresolv $LD"

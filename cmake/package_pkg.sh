@@ -52,7 +52,7 @@ IDENT="dev.modernmavericks.container-tools"
 AGENT_LABEL="dev.modernmavericks.container-tools-updatecheck"
 UPD_APPDIR="/Library/Application Support/ModernMavericks"
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/mvd-pkg.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-pkg.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 stage="$WORK/stage"; scripts="$WORK/scripts"; comp="$WORK/component.pkg"
 

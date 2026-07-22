@@ -14,7 +14,7 @@ include(Mavericks)          # universal umbrella: AppleClang gate + build conven
 include(MavericksSparkle)   # the Sparkle updater .app builder
 
 # Single-source the version from the repo-root VERSION (this project's source dir is updater/).
-file(STRINGS "${CMAKE_SOURCE_DIR}/../VERSION" MVD_VERSION LIMIT_COUNT 1)
+file(STRINGS "${CMAKE_SOURCE_DIR}/../VERSION" MAVERICKS_DOCKER_VERSION LIMIT_COUNT 1)
 
 mavericks_add_updater_app(
   NAME ContainerToolsUpdater
@@ -23,7 +23,7 @@ mavericks_add_updater_app(
   FEED_URL "https://github.com/ModernMavericks/container-tools/releases/latest/download/appcast.xml"
   # EdDSA pubkey read by default from this project's updater/ed25519_key.pub (source dir is updater/).
   ICON "${CMAKE_SOURCE_DIR}/container-tools-updater.icns"
-  VERSION "${MVD_VERSION}"
+  VERSION "${MAVERICKS_DOCKER_VERSION}"
   LOG_PREFIX "MavContainerToolsUpdater"
   CONFIRM_TITLE "Container Tools for Mavericks updated"
   CONFIRM_BODY "Docker CLI, Compose, Machine, and the boot2docker image were updated."

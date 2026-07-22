@@ -10,7 +10,7 @@ set -eu
 SRC=$1; OUT=$2; REF=$3
 [ -f "$SRC/Dockerfile" ] || { echo "no Dockerfile in $SRC" >&2; exit 1; }
 mkdir -p "$OUT"
-IMG="mvd-boot2docker:${REF}"
+IMG="container-tools-boot2docker:${REF}"
 # Patch overlay: reset the (shared, cached) checkout to pristine first so applying is
 # idempotent across re-runs, then apply every *.patch. Phase 1 carries one bitrot-repair
 # patch (dead SKS keyservers -> HTTPS key import); later phases add modernization patches.

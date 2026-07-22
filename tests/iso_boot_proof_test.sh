@@ -7,7 +7,7 @@ BP="$ROOT/cmake/iso_boot_proof.sh"
 sh -n "$BP"
 # Forced skip must exit exactly 77 (ctest SKIP_RETURN_CODE), regardless of host.
 set +e
-MVD_FORCE_SKIP=1 sh "$BP" /nonexistent.iso >/dev/null 2>&1
+MAVERICKS_DOCKER_FORCE_SKIP=1 sh "$BP" /nonexistent.iso >/dev/null 2>&1
 rc=$?
 set -e
 [ "$rc" -eq 77 ] || { echo "expected exit 77 on forced skip, got $rc" >&2; exit 1; }

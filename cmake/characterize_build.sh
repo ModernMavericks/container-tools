@@ -13,16 +13,16 @@ export LC_ALL=C
 
 emit() {  # <binary> <out-dir>
   bin=$1; out=$2; mkdir -p "$out"
-  [ -f "$bin" ] || mvd_die "missing binary $bin"
+  [ -f "$bin" ] || mavericks_docker_die "missing binary $bin"
   # Pipeline enforces thin x86_64; assert_binary_compatible.sh gates that. $NF is arch name for thin binaries.
-  lipo -info "$bin" 2>/dev/null | awk '{print $NF}' > "$out/arch" || mvd_die "lipo $bin"
-  [ -s "$out/arch" ] || mvd_die "no arch for $bin"
-  otool -l "$bin" 2>/dev/null | awk '/LC_VERSION_MIN_MACOSX/{f=1} f&&$1=="version"{print $2; exit}' > "$out/minos" || mvd_die "otool $bin"
-  [ -s "$out/minos" ] || mvd_die "no min-OS for $bin"
+  lipo -info "$bin" 2>/dev/null | awk '{print $NF}' > "$out/arch" || mavericks_docker_die "lipo $bin"
+  [ -s "$out/arch" ] || mavericks_docker_die "no arch for $bin"
+  otool -l "$bin" 2>/dev/null | awk '/LC_VERSION_MIN_MACOSX/{f=1} f&&$1=="version"{print $2; exit}' > "$out/minos" || mavericks_docker_die "otool $bin"
+  [ -s "$out/minos" ] || mavericks_docker_die "no min-OS for $bin"
   # Go module + toolchain versions: proves same sources across toolchains.
   ( "${GO:-go}" version -m "$bin" 2>/dev/null || go version -m "$bin" 2>/dev/null ) \
     | awk '$1=="path"||$1=="mod"||$1=="dep"{print $2"@"$3}' | sort -u > "$out/gomod" || true
-  [ -s "$out/gomod" ] || mvd_die "no Go module info for $bin (not a Go binary?)"
+  [ -s "$out/gomod" ] || mavericks_docker_die "no Go module info for $bin (not a Go binary?)"
 }
 
 case "${1:-}" in
@@ -30,9 +30,9 @@ case "${1:-}" in
            emit "$2" "$3"; echo "characterization written to $3" >&2 ;;
   compare) [ $# -eq 3 ] || { echo "usage: $0 compare <ref-dir> <binary>" >&2; exit 64; }
            ref=$2; bin=$3
-           [ -d "$ref" ] || mvd_die "missing reference dir $ref"
-           for f in arch minos gomod; do [ -s "$ref/$f" ] || mvd_die "reference missing $f"; done
-           tmp=$(mktemp -d "${TMPDIR:-/tmp}/mvd-char.XXXXXX")
+           [ -d "$ref" ] || mavericks_docker_die "missing reference dir $ref"
+           for f in arch minos gomod; do [ -s "$ref/$f" ] || mavericks_docker_die "reference missing $f"; done
+           tmp=$(mktemp -d "${TMPDIR:-/tmp}/container-tools-char.XXXXXX")
            trap 'rm -rf "$tmp" "$tmp.diff"' EXIT
            emit "$bin" "$tmp"
            if diff -ru "$ref" "$tmp" > "$tmp.diff" 2>&1; then
