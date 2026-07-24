@@ -10,15 +10,6 @@
       "matchStrings": ["REPO=(?<packageName>\\S+)\\.git\\nREF=(?<currentValue>\\S+)"],
       "datasourceTemplate": "git-refs",
       "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "fileMatch": ["^\\.github/.+\\.ya?ml$"],
-      "matchStrings": ["(?<currentDigest>[0-9a-f]{40})\\s*#\\s*mavericks-shared-cmake"],
-      "currentValueTemplate": "main",
-      "depNameTemplate": "mavericks-shared-cmake",
-      "packageNameTemplate": "https://github.com/ModernMavericks/shared-cmake",
-      "datasourceTemplate": "git-refs"
     }
   ]
 }
