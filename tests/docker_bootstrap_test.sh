@@ -153,12 +153,29 @@ EOF
 case_context_create
 case_context_current
 
-# --- Case: leftover eval line in profile -> notify ---
-case_env_override() {
+# --- Case: leftover eval line in profile -> commented out (reversible), with a backup ---
+case_env_line_commented() {
   setup; make_dm; make_docker
   printf '%s\n' 'eval "$(docker-machine env default)"' > "$HOME/.bash_profile"
   MAVERICKS_DOCKER_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0"
-  grep -q 'overrides' "$OSA_LOG" || fail "expected env-override notification"
+  grep -q '^# ModernMavericks' "$HOME/.bash_profile" || fail "expected the env line commented with a marker"
+  grep -Eq '^[[:space:]]*eval "\$\(docker-machine env default\)"' "$HOME/.bash_profile" \
+    && fail "the active eval line must be gone"
+  [ -f "$HOME/.bash_profile.premigrate" ] || fail "expected a one-time backup of the profile"
+  teardown
+}
+
+# --- Case: commenting the env line is idempotent (one marker, backup not re-taken) ---
+case_env_line_comment_idempotent() {
+  setup; make_dm; make_docker
+  printf '%s\n' 'eval "$(docker-machine env default)"' > "$HOME/.bash_profile"
+  MAVERICKS_DOCKER_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0 (run 1)"
+  cp "$HOME/.bash_profile.premigrate" "$WORK/backup-after-run1"
+  MAVERICKS_DOCKER_TEST_STATUS=Running sh "$BOOT" || fail "should exit 0 (run 2)"
+  n=$(grep -c '^# ModernMavericks' "$HOME/.bash_profile")
+  [ "$n" = 1 ] || fail "expected exactly one marker after two runs, got $n"
+  cmp -s "$WORK/backup-after-run1" "$HOME/.bash_profile.premigrate" \
+    || fail "backup must not be overwritten on the second run"
   teardown
 }
 
@@ -171,7 +188,8 @@ case_env_clean() {
   teardown
 }
 
-case_env_override
+case_env_line_commented
+case_env_line_comment_idempotent
 case_env_clean
 
 # --- Case: interactive create -> Terminal do-script + lock acquired ---
@@ -284,22 +302,62 @@ case_space_in_state_dir() {
 case_env_commented
 case_space_in_state_dir
 
-# --- Case: a legacy 'default' machine blocks auto-create and warns to migrate ---
-case_legacy_default() {
+# --- Case: a STOPPED legacy 'default' is auto-migrated, then container-tools starts ---
+case_legacy_default_stopped_migrates() {
   setup; make_docker
-  # No container-tools machine (status empty), but a legacy default dir exists.
+  # container-tools absent until migrate runs; legacy 'default' present and Stopped.
   cat > "$BIN/docker-machine" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >> "$DM_LOG"
-case "\$1" in status) exit 1 ;; esac
+case "\$1 \$2" in
+  "status default")         echo Stopped; exit 0 ;;
+  "status container-tools") [ -f "$WORK/migrated" ] && { echo Stopped; exit 0; }; exit 1 ;;
+  "start container-tools")  : > "$WORK/started" ;;
+  status)                   exit 1 ;;
+esac
 EOF
   chmod +x "$BIN/docker-machine"
+  # migrate stub: records the call and flips container-tools into existence.
+  cat > "$BIN/docker-machine-migrate" <<EOF
+#!/bin/sh
+printf 'MIGRATE-CALLED\n' >> "$DM_LOG"
+: > "$WORK/migrated"
+EOF
+  chmod +x "$BIN/docker-machine-migrate"
   mkdir -p "$MAVERICKS_DOCKER_MACHDIR/default"
-  sh "$BOOT" || fail "should exit 0 on legacy default"
+  sh "$BOOT" || fail "should exit 0 on stopped legacy default"
+  grep -q 'MIGRATE-CALLED' "$DM_LOG" || fail "expected auto-migrate for a stopped 'default'"
   grep -q 'create -d vmwarefusion' "$DM_LOG" && fail "must not create a 2nd VM when default exists"
-  grep -q 'migrate' "$OSA_LOG" || fail "expected a migrate notification"
+  [ -f "$WORK/started" ] || fail "expected container-tools to start after migrate"
   teardown
 }
 
-case_legacy_default
+# --- Case: a RUNNING legacy 'default' is NOT auto-migrated; user is told to stop it ---
+case_legacy_default_running_defers() {
+  setup; make_docker
+  cat > "$BIN/docker-machine" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DM_LOG"
+case "\$1 \$2" in
+  "status default")         echo Running; exit 0 ;;
+  "status container-tools") exit 1 ;;
+  status)                   exit 1 ;;
+esac
+EOF
+  chmod +x "$BIN/docker-machine"
+  cat > "$BIN/docker-machine-migrate" <<EOF
+#!/bin/sh
+printf 'MIGRATE-CALLED\n' >> "$DM_LOG"
+EOF
+  chmod +x "$BIN/docker-machine-migrate"
+  mkdir -p "$MAVERICKS_DOCKER_MACHDIR/default"
+  sh "$BOOT" || fail "should exit 0 on running legacy default"
+  grep -q 'MIGRATE-CALLED' "$DM_LOG" && fail "must NOT migrate a running 'default'"
+  grep -q 'create -d vmwarefusion' "$DM_LOG" && fail "must not create a 2nd VM"
+  grep -q 'migrate' "$OSA_LOG" || fail "expected a notification to stop+migrate the running default"
+  teardown
+}
+
+case_legacy_default_stopped_migrates
+case_legacy_default_running_defers
 echo "docker_bootstrap_test: OK"

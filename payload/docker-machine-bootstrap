@@ -44,13 +44,31 @@ sync_context() {
   docker context use "$CONTEXT" >>"$LOG" 2>&1 || true
 }
 
-warn_env_override() {
+# Neutralize a Wowfunhappy-era shell wiring line (eval "$(docker-machine env default)") by
+# commenting it out with a marker -- reversibly: a one-time <profile>.premigrate backup is kept.
+# Container Tools points the docker CLI at the VM via a 'mavericks' docker context, so an active
+# DOCKER_HOST from the old setup would fight it. Idempotent: the leading '#' the marker adds means
+# a second run finds no uncommented match. A residual BARE DOCKER_HOST= (too ambiguous to rewrite)
+# still only gets a notification.
+neutralize_env_override() {
   for _p in $PROFILES; do
     [ -f "$_p" ] || continue
-    if grep -Ev '^[[:space:]]*#' "$_p" 2>/dev/null | grep -Eq 'docker-machine env|DOCKER_HOST='; then
+    if grep -Ev '^[[:space:]]*#' "$_p" 2>/dev/null | grep -Eq 'docker-machine env'; then
+      [ -f "$_p.premigrate" ] || cp "$_p" "$_p.premigrate" 2>/dev/null || true
+      _tmp="$_p.mm-tmp.$$"
+      if sed -E 's|^([[:space:]]*)([^#].*docker-machine env.*)$|\1# ModernMavericks container-tools (uses docker context mavericks instead): \2|' \
+           "$_p" > "$_tmp" 2>/dev/null; then
+        mv -f "$_tmp" "$_p" 2>/dev/null || rm -f "$_tmp" 2>/dev/null || true
+        log "commented a 'docker-machine env' line in $_p (backup: $_p.premigrate)"
+        notify envmigrated "Container Tools for Mavericks" \
+          "Disabled an old 'docker-machine env' line in $(basename "$_p"); Container Tools manages the docker context now."
+      else
+        rm -f "$_tmp" 2>/dev/null || true
+      fi
+    fi
+    if grep -Ev '^[[:space:]]*#' "$_p" 2>/dev/null | grep -Eq 'DOCKER_HOST='; then
       notify envoverride "Container Tools for Mavericks" \
         "A DOCKER_HOST line in $(basename "$_p") overrides the managed setup; remove it to use Container Tools for Mavericks."
-      return 0
     fi
   done
 }
@@ -70,19 +88,40 @@ main() {
   _status=$(machine_status)
   if [ -z "$_status" ]; then
     if legacy_default_exists; then
-      log "legacy 'default' machine present; not creating a second VM"
-      notify migrate "Container Tools for Mavericks" \
-        "A 'default' Docker VM exists. Run 'docker-machine-ctl migrate' to rename it to container-tools."
-      write_state "$(status_word)"
-      exit 0
+      # A Wowfunhappy-era 'default' VM exists and container-tools does not. Carry the data by
+      # renaming default -> container-tools (docker-machine-migrate), but ONLY while it is stopped:
+      # migrate is irreversible-ish and refuses on a live VM. A running 'default' is left untouched
+      # with a nudge to stop it, then this reconciles on the next run.
+      if [ "$(docker-machine status default 2>/dev/null)" = "Running" ]; then
+        log "legacy 'default' is running; deferring migrate"
+        notify migrate "Container Tools for Mavericks" \
+          "Found a running 'default' Docker VM. Stop it (docker-machine stop default) and Container Tools will migrate it to container-tools."
+        write_state "$(status_word)"
+        exit 0
+      fi
+      if command -v docker-machine-migrate >/dev/null 2>&1; then
+        log "auto-migrating legacy 'default' -> container-tools"
+        docker-machine-migrate >>"$LOG" 2>&1 || log "migrate reported an error (continuing)"
+      else
+        log "docker-machine-migrate not found; cannot auto-migrate"
+      fi
+      _status=$(machine_status)
+      if [ -z "$_status" ]; then
+        # Migrate produced no container-tools machine; guide the user rather than create a 2nd VM.
+        notify migrate "Container Tools for Mavericks" \
+          "A 'default' Docker VM exists. Run 'docker-machine-ctl migrate' to rename it to container-tools."
+        write_state "$(status_word)"
+        exit 0
+      fi
+    else
+      if ! create_machine; then write_state creating; exit 0; fi
+      [ "${MAVERICKS_DOCKER_NONINTERACTIVE:-}" = 1 ] || { write_state "$(status_word)"; exit 0; }
+      _status=$(machine_status)
     fi
-    if ! create_machine; then write_state creating; exit 0; fi
-    [ "${MAVERICKS_DOCKER_NONINTERACTIVE:-}" = 1 ] || { write_state "$(status_word)"; exit 0; }
-    _status=$(machine_status)
   fi
   [ "$_status" = "Running" ] || docker-machine start "$MACHINE" >>"$LOG" 2>&1 || true
   [ "$(machine_status)" = "Running" ] && sync_context
-  warn_env_override
+  neutralize_env_override
   write_state "$(status_word)"
   exit 0
 }
