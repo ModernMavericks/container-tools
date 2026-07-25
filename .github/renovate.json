@@ -6,7 +6,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^components/[^/]+/version$"],
+      "managerFilePatterns": [
+        "/^components/[^/]+/version$/"
+      ],
       "matchStrings": ["REPO=(?<packageName>\\S+)\\.git\\nREF=(?<currentValue>\\S+)"],
       "datasourceTemplate": "git-refs",
       "versioningTemplate": "semver"
