@@ -47,11 +47,12 @@ jobs:
       # The 10.9-correct Go toolchain (patched mavericks-golang cross .pkg; see the comment history).
       - name: Install patched Go (mavericks-golang cross toolchain)
         env:
-          GO_PKG_REF:    1.26.4-mavericks.1  # ModernMavericks/golang release tag
-          GO_PKG_SHA256: 5d800b803562cbfbfec2ed36b06134dab041609947dc105ab3f121ade470419e
+          GO_PKG_REF:    1.26.4-mavericks.2  # ModernMavericks/golang release tag
+          GO_PKG_SHA256: 928ec854c6b241df96e2d96b53572071802b46fc34267e3be490ef2fe5a20b25
         run: |
           ver="$GO_PKG_REF"
-          pkg="golang-go126-cross-${ver}-darwin-arm64.pkg"
+          # golang mavericks.2 shortened the asset name: go126-<gover>-cross-mavericks.<rev>.pkg
+          pkg="go126-${ver%%-mavericks.*}-cross-${ver#*-}.pkg"
           curl -fL --retry 3 -o "$pkg" \
             "https://github.com/ModernMavericks/golang/releases/download/${GO_PKG_REF}/${pkg}"
           echo "${GO_PKG_SHA256}  ${pkg}" | shasum -a 256 -c -
