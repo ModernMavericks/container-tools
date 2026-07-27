@@ -12,6 +12,18 @@
       "matchStrings": ["REPO=(?<packageName>\\S+)\\.git\\nREF=(?<currentValue>\\S+)"],
       "datasourceTemplate": "git-refs",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/release\\.yml$/"
+      ],
+      "matchStrings": ["(?<currentValue>[0-9][^\\s#\"']*)\\s*#\\s*mavericks-golang"],
+      "depNameTemplate": "mavericks-golang",
+      "packageNameTemplate": "ModernMavericks/golang",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-mavericks\\.(?<build>\\d+)$"
     }
   ]
 }

@@ -47,15 +47,20 @@ jobs:
       # The 10.9-correct Go toolchain (patched mavericks-golang cross .pkg; see the comment history).
       - name: Install patched Go (mavericks-golang cross toolchain)
         env:
-          GO_PKG_REF:    1.26.4-mavericks.2  # ModernMavericks/golang release tag
-          GO_PKG_SHA256: 928ec854c6b241df96e2d96b53572071802b46fc34267e3be490ef2fe5a20b25
+          # Renovate bumps this via the '# mavericks-golang' customManager in .github/renovate.json
+          # (github-releases on ModernMavericks/golang). No pinned sha256 to hand-maintain: we verify
+          # the download against golang's own published SHA256SUMS for the pinned release.
+          GO_PKG_REF:    1.26.4-mavericks.2  # mavericks-golang
         run: |
           ver="$GO_PKG_REF"
           # golang mavericks.2 shortened the asset name: go126-<gover>-cross-mavericks.<rev>.pkg
           pkg="go126-${ver%%-mavericks.*}-cross-${ver#*-}.pkg"
-          curl -fL --retry 3 -o "$pkg" \
-            "https://github.com/ModernMavericks/golang/releases/download/${GO_PKG_REF}/${pkg}"
-          echo "${GO_PKG_SHA256}  ${pkg}" | shasum -a 256 -c -
+          base="https://github.com/ModernMavericks/golang/releases/download/${ver}"
+          curl -fL --retry 3 -o "$pkg" "$base/$pkg"
+          curl -fL --retry 3 -o SHA256SUMS "$base/SHA256SUMS"
+          sum=$(awk -v f="$pkg" '$2==f' SHA256SUMS)
+          [ -n "$sum" ] || { echo "::error::$pkg missing from golang SHA256SUMS"; exit 1; }
+          printf '%s\n' "$sum" | shasum -a 256 -c -
           sudo installer -pkg "$pkg" -target /
           echo "/usr/local/go126-cross/bin" >> "$GITHUB_PATH"
 
