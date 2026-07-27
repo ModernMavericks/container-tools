@@ -150,8 +150,79 @@ EOF
   teardown
 }
 
+# --- Case: env fails on a post-rename cert/IP mismatch -> regenerate-certs, retry, create context ---
+# Regression for the 2026-07-27 dogfood finding: migrating default->container-tools gave the VM a new
+# DHCP IP, so its TLS cert (issued for the old IP) failed validation and `docker-machine env` errored.
+# sync_context bailed silently -> no context, migrated-but-unreachable VM. It must regenerate certs and
+# retry ON THAT SPECIFIC error only (regenerate-certs restarts the daemon).
+case_context_cert_regen() {
+  setup; make_docker
+  cat > "$BIN/docker-machine" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DM_LOG"
+case "\$1" in
+  status) echo Running ;;
+  env)
+    if [ -f "$WORK/regenerated" ]; then
+      echo 'export DOCKER_HOST="tcp://192.168.237.137:2376"'
+      echo "export DOCKER_CERT_PATH=\"\$HOME/x\""
+    else
+      echo 'Error checking TLS connection: certificate is valid for 192.168.237.131, not 192.168.237.137' >&2
+      exit 1
+    fi ;;
+  regenerate-certs) : > "$WORK/regenerated" ;;
+esac
+EOF
+  chmod +x "$BIN/docker-machine"
+  sh "$BOOT" || fail "should exit 0"
+  grep -q 'regenerate-certs' "$DM_LOG" || fail "expected regenerate-certs on a cert/IP mismatch"
+  grep -q 'context create mavericks' "$DOCKER_LOG" || fail "context must be created after cert regen"
+  teardown
+}
+
+# --- Safety: env fails for a NON-cert reason -> do NOT regenerate-certs (no gratuitous daemon restart) ---
+case_context_env_fail_noncert() {
+  setup; make_docker
+  cat > "$BIN/docker-machine" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DM_LOG"
+case "\$1" in
+  status) echo Running ;;
+  env) echo 'Host does not exist: "container-tools"' >&2; exit 1 ;;
+  regenerate-certs) : > "$WORK/regenerated" ;;
+esac
+EOF
+  chmod +x "$BIN/docker-machine"
+  sh "$BOOT" || fail "should exit 0"
+  grep -q 'regenerate-certs' "$DM_LOG" && fail "must NOT regenerate-certs (restarts daemon) for a non-cert failure"
+  grep -q 'context create' "$DOCKER_LOG" && fail "no context when env cannot be resolved"
+  teardown
+}
+
+# --- Safety: cert mismatch but regen doesn't fix it -> regen attempted EXACTLY once, graceful, no context ---
+case_context_regen_ineffective() {
+  setup; make_docker
+  cat > "$BIN/docker-machine" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DM_LOG"
+case "\$1" in
+  status) echo Running ;;
+  env) echo 'certificate is valid for 10.0.0.1, not 10.0.0.2' >&2; exit 1 ;;
+  regenerate-certs) : ;;
+esac
+EOF
+  chmod +x "$BIN/docker-machine"
+  sh "$BOOT" || fail "should exit 0 even if regen does not help"
+  [ "$(grep -c 'regenerate-certs' "$DM_LOG")" = 1 ] || fail "regen must be attempted exactly once (no thrash)"
+  grep -q 'context create' "$DOCKER_LOG" && fail "no context when env still fails after regen"
+  teardown
+}
+
 case_context_create
 case_context_current
+case_context_cert_regen
+case_context_env_fail_noncert
+case_context_regen_ineffective
 
 # --- Case: leftover eval line in profile -> commented out (reversible), with a backup ---
 case_env_line_commented() {

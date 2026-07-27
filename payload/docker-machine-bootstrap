@@ -26,7 +26,17 @@ create_machine() {
 }
 
 sync_context() {
-  _env=$(docker-machine env "$MACHINE" 2>/dev/null) || return 0
+  _env=$(docker-machine env "$MACHINE" 2>/dev/null)
+  if [ -z "$_env" ] && docker-machine env "$MACHINE" 2>&1 | grep -q 'certificate is valid for'; then
+    # A rename/restart can hand the VM a new DHCP IP; its TLS cert (issued for the old IP) then fails
+    # validation and `env` errors "certificate is valid for X, not Y". Regenerate certs for the current
+    # IP and retry -- ONLY on that error (regenerate-certs restarts the daemon, so never for transient
+    # or unreachable failures). Found dogfooding the default->container-tools migration, 2026-07-27.
+    log "cert/IP mismatch on $MACHINE (a rename gave it a new IP); regenerating certs"
+    docker-machine regenerate-certs -f "$MACHINE" >>"$LOG" 2>&1 || true
+    _env=$(docker-machine env "$MACHINE" 2>/dev/null)
+  fi
+  [ -n "$_env" ] || return 0
   DOCKER_HOST=; DOCKER_CERT_PATH=
   eval "$_env" 2>/dev/null || return 0
   [ -n "${DOCKER_HOST:-}" ] || return 0
