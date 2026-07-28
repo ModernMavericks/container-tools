@@ -14,6 +14,8 @@ on:
   push:
     branches: [main]        # signal: build+gate every main push (surfaces a bump that broke something)
     tags: ['*-mavericks.*']  # tags additionally package, sign, and publish a release
+  pull_request:
+    branches: [main]          # PR build is the status check Renovate automerge waits on
   workflow_dispatch:
 
 permissions:
