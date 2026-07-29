@@ -55,13 +55,17 @@ jobs:
           GO_PKG_REF:    1.26.4-mavericks.3  # mavericks-golang
         run: |
           ver="$GO_PKG_REF"
-          # golang mavericks.2 shortened the asset name: go126-<gover>-cross-mavericks.<rev>.pkg
-          pkg="go126-${ver%%-mavericks.*}-cross-${ver#*-}.pkg"
           base="https://github.com/ModernMavericks/golang/releases/download/${ver}"
-          curl -fL --retry 3 -o "$pkg" "$base/$pkg"
           curl -fL --retry 3 -o SHA256SUMS "$base/SHA256SUMS"
-          sum=$(awk -v f="$pkg" '$2==f' SHA256SUMS)
-          [ -n "$sum" ] || { echo "::error::$pkg missing from golang SHA256SUMS"; exit 1; }
+          # golang renamed its cross asset prefix go126- -> golang- at 1.26.5-mavericks.1; accept either.
+          gover="${ver%%-mavericks.*}"; rev="${ver#*-}"; pkg=""; sum=""
+          for pref in golang go126; do
+            cand="${pref}-${gover}-cross-${rev}.pkg"
+            s=$(awk -v f="$cand" '$2==f' SHA256SUMS || true)
+            if [ -n "$s" ]; then pkg="$cand"; sum="$s"; break; fi
+          done
+          [ -n "$pkg" ] || { echo "::error::no cross pkg for $ver in golang SHA256SUMS"; exit 1; }
+          curl -fL --retry 3 -o "$pkg" "$base/$pkg"
           printf '%s\n' "$sum" | shasum -a 256 -c -
           sudo installer -pkg "$pkg" -target /
           echo "/usr/local/go126-cross/bin" >> "$GITHUB_PATH"
