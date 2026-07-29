@@ -52,7 +52,7 @@ jobs:
           # Renovate bumps this via the '# mavericks-golang' customManager in .github/renovate.json
           # (github-releases on ModernMavericks/golang). No pinned sha256 to hand-maintain: we verify
           # the download against golang's own published SHA256SUMS for the pinned release.
-          GO_PKG_REF:    1.26.4-mavericks.3  # mavericks-golang
+          GO_PKG_REF:    1.26.5-mavericks.1  # mavericks-golang
         run: |
           ver="$GO_PKG_REF"
           base="https://github.com/ModernMavericks/golang/releases/download/${ver}"
