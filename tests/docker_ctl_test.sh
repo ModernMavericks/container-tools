@@ -16,6 +16,7 @@ setup() {
   export MAVERICKS_DOCKER_COMMON="$ROOT/payload/docker-machine-common.sh"
   export DM_LOG="$WORK/dm.args"; : > "$DM_LOG"
   export LC_LOG="$WORK/lc.args"; : > "$LC_LOG"
+  export DOCKER_LOG="$WORK/docker.args"; : > "$DOCKER_LOG"
   OLDPATH=$PATH; PATH="$BIN:$PATH"
 }
 teardown() { PATH=$OLDPATH; rm -rf "$WORK"; }
@@ -50,6 +51,51 @@ case_start_stop() {
   grep -q '^start container-tools' "$DM_LOG" || fail "start calls docker-machine start container-tools"
   sh "$CTL" stop >/dev/null || fail "stop exit 0"
   grep -q '^stop container-tools' "$DM_LOG" || fail "stop calls docker-machine stop container-tools"
+  teardown
+}
+
+# VM up on a NEW IP while the mavericks context still holds the OLD IP — the renumber that
+# makes `docker ps` hang. A running-VM verb must self-heal by re-pointing the context.
+# (docker-machine env reports the VM's real current IP, so detection never hangs on the stale one.)
+stub_renumbered() {
+  cat > "$BIN/docker-machine" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DM_LOG"
+case "\$1" in
+  status) echo Running ;;
+  env) echo 'export DOCKER_HOST="tcp://10.0.0.5:2376"'; echo 'export DOCKER_CERT_PATH="/tmp/certs"' ;;
+esac
+exit 0
+EOF
+  chmod +x "$BIN/docker-machine"
+  cat > "$BIN/docker" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DOCKER_LOG"
+case "\$*" in
+  *"context inspect mavericks --format"*) echo "tcp://10.0.0.4:2376" ;;   # stale (old) host
+  *"context inspect mavericks"*) exit 0 ;;
+esac
+exit 0
+EOF
+  chmod +x "$BIN/docker"
+}
+case_start_syncs_context() {
+  setup; stub_renumbered
+  sh "$CTL" start >/dev/null || fail "start exit 0"
+  grep -q '^start container-tools' "$DM_LOG" || fail "start calls docker-machine start"
+  grep -q '^env container-tools' "$DM_LOG" || fail "start must sync context after starting"
+  grep -q 'context update mavericks' "$DOCKER_LOG" || fail "start must re-point mavericks at the current IP"
+  grep -q 'context use mavericks' "$DOCKER_LOG" || fail "start must select the mavericks context"
+  teardown
+}
+# No sync on the read path: status must stay fast (no docker-machine env) — there's no cheap
+# renumber detector, so healing every poll would tax the happy path. Renumber is a restart
+# event (start/restart heals) and the login-agent timer covers out-of-band restarts.
+case_status_stays_fast() {
+  setup; stub_renumbered
+  [ "$(sh "$CTL" status)" = running ] || fail "status running"
+  grep -q '^env container-tools' "$DM_LOG" && fail "status must NOT call docker-machine env (keep happy path fast)"
+  grep -q 'context update' "$DOCKER_LOG" 2>/dev/null && fail "status must not re-point the context"
   teardown
 }
 case_login() {
@@ -105,6 +151,8 @@ case_packaging() {
 
 case_status
 case_start_stop
+case_start_syncs_context
+case_status_stays_fast
 case_login
 case_vmxpid
 case_setup

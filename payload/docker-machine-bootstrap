@@ -25,34 +25,8 @@ create_machine() {
   return 0
 }
 
-sync_context() {
-  _env=$(docker-machine env "$MACHINE" 2>/dev/null)
-  if [ -z "$_env" ] && docker-machine env "$MACHINE" 2>&1 | grep -q 'certificate is valid for'; then
-    # A rename/restart can hand the VM a new DHCP IP; its TLS cert (issued for the old IP) then fails
-    # validation and `env` errors "certificate is valid for X, not Y". Regenerate certs for the current
-    # IP and retry -- ONLY on that error (regenerate-certs restarts the daemon, so never for transient
-    # or unreachable failures). Found dogfooding the default->container-tools migration, 2026-07-27.
-    log "cert/IP mismatch on $MACHINE (a rename gave it a new IP); regenerating certs"
-    docker-machine regenerate-certs -f "$MACHINE" >>"$LOG" 2>&1 || true
-    _env=$(docker-machine env "$MACHINE" 2>/dev/null)
-  fi
-  [ -n "$_env" ] || return 0
-  DOCKER_HOST=; DOCKER_CERT_PATH=
-  eval "$_env" 2>/dev/null || return 0
-  [ -n "${DOCKER_HOST:-}" ] || return 0
-  _spec="host=$DOCKER_HOST,ca=$DOCKER_CERT_PATH/ca.pem,cert=$DOCKER_CERT_PATH/cert.pem,key=$DOCKER_CERT_PATH/key.pem"
-  if docker context inspect "$CONTEXT" >/dev/null 2>&1; then
-    _cur=$(docker context inspect "$CONTEXT" --format '{{.Endpoints.docker.Host}}' 2>/dev/null)
-    if [ "$_cur" != "$DOCKER_HOST" ]; then
-      docker context update "$CONTEXT" --docker "$_spec" >>"$LOG" 2>&1 || true
-      log "context host -> $DOCKER_HOST"
-    fi
-  else
-    docker context create "$CONTEXT" --docker "$_spec" >>"$LOG" 2>&1 || true
-    log "context created -> $DOCKER_HOST"
-  fi
-  docker context use "$CONTEXT" >>"$LOG" 2>&1 || true
-}
+# sync_context() now lives in docker-machine-common.sh (sourced above) — shared with
+# docker-machine-ctl so the menu's start/restart/status paths self-heal a DHCP renumber too.
 
 # Neutralize a Wowfunhappy-era shell wiring line (eval "$(docker-machine env default)") by
 # commenting it out with a marker -- reversibly: a one-time <profile>.premigrate backup is kept.

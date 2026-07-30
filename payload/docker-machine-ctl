@@ -7,6 +7,9 @@ set -u
 _run_and_announce() { # docker-machine subcommand
   docker-machine "$1" "$MACHINE" >>"$LOG" 2>&1
   _rc=$?
+  # A start/restart can bring the VM up on a new DHCP IP; re-point the context so the menu path
+  # self-heals too (not only the login-agent timer). Only once the VM is actually up.
+  case "$1" in start|restart) [ "$(machine_status)" = Running ] && sync_context ;; esac
   write_state "$(status_word)"
   return $_rc
 }

@@ -79,3 +79,35 @@ write_state() {
   mkdir -p "$STATE_DIR" 2>/dev/null || true
   printf '%s\n' "$1" > "$STATE_FILE.tmp" 2>/dev/null && mv -f "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null || true
 }
+
+# Re-point the 'mavericks' docker context at the VM's current endpoint, healing the two ways a
+# DHCP renumber breaks it: a stale context host (so `docker` doesn't hang on the dead IP) and a
+# TLS cert issued for the old IP. Detection uses `docker-machine env`, which reads docker-machine's
+# OWN current-IP knowledge -- so it never hangs on the stale context. Cert regen is gated to that
+# specific error only (regenerate-certs restarts the daemon, so never for transient/unreachable
+# failures). Found dogfooding the default->container-tools migration, 2026-07-27. Shared by
+# docker-machine-bootstrap (timer/login) and docker-machine-ctl (start/restart/status).
+sync_context() {
+  _env=$(docker-machine env "$MACHINE" 2>/dev/null)
+  if [ -z "$_env" ] && docker-machine env "$MACHINE" 2>&1 | grep -q 'certificate is valid for'; then
+    log "cert/IP mismatch on $MACHINE (a rename gave it a new IP); regenerating certs"
+    docker-machine regenerate-certs -f "$MACHINE" >>"$LOG" 2>&1 || true
+    _env=$(docker-machine env "$MACHINE" 2>/dev/null)
+  fi
+  [ -n "$_env" ] || return 0
+  DOCKER_HOST=; DOCKER_CERT_PATH=
+  eval "$_env" 2>/dev/null || return 0
+  [ -n "${DOCKER_HOST:-}" ] || return 0
+  _spec="host=$DOCKER_HOST,ca=$DOCKER_CERT_PATH/ca.pem,cert=$DOCKER_CERT_PATH/cert.pem,key=$DOCKER_CERT_PATH/key.pem"
+  if docker context inspect "$CONTEXT" >/dev/null 2>&1; then
+    _cur=$(docker context inspect "$CONTEXT" --format '{{.Endpoints.docker.Host}}' 2>/dev/null)
+    if [ "$_cur" != "$DOCKER_HOST" ]; then
+      docker context update "$CONTEXT" --docker "$_spec" >>"$LOG" 2>&1 || true
+      log "context host -> $DOCKER_HOST"
+    fi
+  else
+    docker context create "$CONTEXT" --docker "$_spec" >>"$LOG" 2>&1 || true
+    log "context created -> $DOCKER_HOST"
+  fi
+  docker context use "$CONTEXT" >>"$LOG" 2>&1 || true
+}
