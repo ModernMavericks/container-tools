@@ -42,6 +42,8 @@ jobs:
       publish: ${{ steps.ver.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # a local_release repackage counts existing <upstream>-mavericks.* tags
 
       # shared-cmake installs itself via its own action (self-registering in the CMake user package
       # registry); consumed thereafter via find_package. @v1 is the moving major tag (Renovate tracks it).
@@ -50,10 +52,13 @@ jobs:
 
       # Three ways in here decide two things: what VER is, and whether this run publishes.
       #   - a *-mavericks.* tag: VER = the tag (must match the committed VERSION file); publish=yes.
-      #   - workflow_dispatch(local_release=true): VER = <same date>-mavericks.(N+1), computed from the
-      #     committed VERSION file; publish=yes. Written back to the local VERSION file (NOT committed)
-      #     so this job's own cmake configure (MAVERICKS_DOCKER_VERSION, the updater's bundle version)
-      #     embeds the repackage's real version, not the stale on-disk one.
+      #   - workflow_dispatch(local_release=true): VER = <same date>-mavericks.(N+1) where N is the
+      #     highest EXISTING tag for this date — derived from tags, not from the VERSION file, because a
+      #     dispatch-cut version is never committed back: reading the file would recompute the same N+1
+      #     on the next ingredient bump and OVERWRITE that release instead of cutting the next one.
+      #     publish=yes. Written to the local VERSION file (NOT committed) so this job's own cmake
+      #     configure (MAVERICKS_DOCKER_VERSION, the updater's bundle version) embeds the repackage's
+      #     real version, not the stale on-disk one.
       #   - anything else (push to main / PR): VER = the committed VERSION file, unchanged; publish=no.
       - name: Decide version + whether this run publishes
         id: ver
@@ -68,6 +73,11 @@ jobs:
             CUR=$(cat VERSION)
             UP="${CUR%%-mavericks.*}"; N="${CUR##*-mavericks.}"
             case "$N" in ''|*[!0-9]*) echo "::error::unexpected VERSION '$CUR'"; exit 1;; esac
+            for t in $(git tag --list "${UP}-mavericks.*"); do
+              n="${t##*-mavericks.}"
+              case "$n" in ''|*[!0-9]*) continue;; esac
+              [ "$n" -gt "$N" ] && N="$n"
+            done
             VER="${UP}-mavericks.$((N + 1))"
             PUBLISH=true
             printf '%s\n' "$VER" > VERSION
