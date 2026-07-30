@@ -26,13 +26,17 @@ on:
 permissions:
   contents: write
 
-# Superseded runs cancel on the same ref: a PR's new commit cancels its prior run, and rapid main
-# merges cancel superseded main builds. Each tag is a unique ref, so a publish build is never cancelled.
-# workflow_dispatch runs (local_release) get their own group-per-run-id: they land on the SAME ref as
-# ordinary main pushes (refs/heads/main), and must never cancel -- or be cancelled by -- those builds.
+# Push/PR builds serialize on the ref (cancel-in-progress): a PR's new commit cancels its prior run,
+# rapid main merges cancel superseded main builds, and each tag is a unique ref so a publish is never
+# cancelled. A local_release dispatch instead cuts <date>-mavericks.(N+1) from the existing tags, so two
+# running at once (a manual cut racing the ingredient-bump auto-repackage) would BOTH read the same N and
+# collide on the same tag. So all dispatches share ONE group with cancel-in-progress:false -- a
+# version-bump LOCK: they queue one-at-a-time, and the second only starts after the first has published,
+# by which point N has advanced and it cuts the next number. The dispatch group is distinct from the
+# main-push ref group, so a dispatch and an ordinary main build still never cancel each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'local_release' || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   build-macos:

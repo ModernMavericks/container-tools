@@ -149,6 +149,21 @@ case_packaging() {
   echo "  ctl-packaging OK"
 }
 
+# local_release version-bump LOCK: concurrent dispatches (e.g. a manual cut racing the ingredient-bump
+# auto-repackage) must serialize on a shared concurrency group, or both read the same N and collide on
+# the same -mavericks.(N+1) tag. Guard the serialization and forbid a revert to per-run-id grouping.
+case_release_lock() {
+  RY="$ROOT/.github/workflows/release.yml"
+  grep -qF "workflow_dispatch' && 'local_release'" "$RY" \
+    || fail "release.yml: local_release dispatches must share ONE concurrency group (version-bump lock)"
+  grep -qF "cancel-in-progress: \${{ github.event_name != 'workflow_dispatch' }}" "$RY" \
+    || fail "release.yml: dispatch runs must queue (cancel-in-progress false), never cancel a publish"
+  if grep -qF "workflow_dispatch' && github.run_id" "$RY"; then
+    fail "release.yml: per-run-id dispatch group reintroduces the concurrent-cut collision"
+  fi
+  echo "  release-lock OK"
+}
+
 case_status
 case_start_stop
 case_start_syncs_context
@@ -157,4 +172,5 @@ case_login
 case_vmxpid
 case_setup
 case_packaging
+case_release_lock
 echo "docker_ctl_test: OK"
