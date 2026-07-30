@@ -152,13 +152,13 @@
     // ribs. Derived from the product's container art (updater/container-tools-updater.svg),
     // reduced to a monochrome silhouette that survives 16px (see updater/ICON-CREDIT.txt).
     NSRect body = NSMakeRect(2.0, 4.5, 14.0, 9.0);
-    NSBezierPath *container = [NSBezierPath bezierPathWithRoundedRect:body xRadius:1.5 yRadius:1.5];
+    NSBezierPath *container = [NSBezierPath bezierPathWithRect:body];   // sharp corners read as a box
 
-    // Rails (two horizontals) + corrugation (five verticals): stroked as detail when the
+    // Rails (two horizontals) + corrugation (three verticals): stroked as detail when the
     // container is an outline, or punched back out of the body when it is a solid silhouette.
     NSBezierPath *detail = [NSBezierPath bezierPath];
-    for (int i = 1; i <= 5; i++) {
-      CGFloat x = NSMinX(body) + i * (NSWidth(body) / 6.0);
+    for (int i = 1; i <= 3; i++) {
+      CGFloat x = NSMinX(body) + i * (NSWidth(body) / 4.0);
       [detail moveToPoint:NSMakePoint(x, NSMinY(body) + 2.0)];
       [detail lineToPoint:NSMakePoint(x, NSMaxY(body) - 2.0)];
     }
