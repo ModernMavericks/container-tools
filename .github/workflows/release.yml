@@ -50,6 +50,14 @@ jobs:
       - name: Install mavericks-shared-cmake
         uses: ModernMavericks/shared-cmake/.github/actions/install@v1
 
+      # The ingredient pin list is derived from repackage-on-ingredient-bump.yml's own paths, so the
+      # repackage trigger and the release notes can't drift -- but a glob that matches nothing would
+      # silently mean no repackage and thinner notes. Fail here instead.
+      - name: Guard the ingredient pin declaration
+        run: |
+          SCR="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
+          sh "$SCR/check-ingredient-pins.sh"
+
       # Three ways in here decide two things: what VER is, and whether this run publishes.
       #   - a *-mavericks.* tag: VER = the tag (must match the committed VERSION file); publish=yes.
       #   - workflow_dispatch(local_release=true): VER = <same date>-mavericks.(N+1) where N is the
@@ -199,6 +207,8 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # generated notes diff ingredient pins against the previous release tag
       - name: Install mavericks-shared-cmake
         uses: ModernMavericks/shared-cmake/.github/actions/install@v1
       - uses: actions/download-artifact@v8
@@ -212,22 +222,35 @@ jobs:
       # same reason, release-notes/$VER.md for a freshly-cut local_release version can't exist in this
       # checkout yet (nothing was committed) -- stub it so sign_and_appcast.sh's --notes-file has a
       # non-empty file to read.
-      - name: Ensure release-notes/$VER.md exists
+      # Then append the FACTS: which ingredient pins moved since the last release. A repackage exists
+      # to ship a new input, so naming that input is the whole point of its notes -- but notes are
+      # prose, so every step here tolerates failure rather than blocking a release.
+      - name: Compose release notes (stub if absent, + which ingredients changed)
         env:
           VER: ${{ needs.build-macos.outputs.version }}
         run: |
+          set -eu
+          SCR="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
           NOTES="release-notes/$VER.md"
           if [ ! -s "$NOTES" ]; then
             mkdir -p release-notes
             {
               echo "ModernMavericks container-tools $VER."
               echo
-              echo "- Repackage rebuilt with the current build ingredients (see the component pins"
-              echo "  under components/ for what moved). No change intended to the docker component"
-              echo "  versions themselves."
+              echo "- Repackage rebuilt with updated build ingredients. No change intended to the"
+              echo "  docker component versions themselves beyond what is listed below."
               echo "- Automatically cut via workflow_dispatch local_release."
             } > "$NOTES"
           fi
+          PREV="$(sh "$SCR/previous-release-tag.sh" "$VER" || true)"
+          PINS="$(sh "$SCR/ingredient-pins.sh" || true)"
+          if [ -n "$PREV" ] && [ -n "$PINS" ]; then
+            SECTION="$(sh "$SCR/ingredient-notes.sh" "$PREV" $PINS || true)"
+            [ -z "$SECTION" ] || printf '\n%s\n' "$SECTION" >> "$NOTES"
+          fi
+          mkdir -p dist
+          cp "$NOTES" dist/RELEASE_NOTES.md   # becomes the Release body; not attached as an asset
+          echo "=== $NOTES ==="; cat "$NOTES"
 
       - name: Assemble + sign the .pkg, render the appcast
         env:
@@ -273,6 +296,7 @@ jobs:
             dist/*.pkg
             dist/appcast.xml
             dist/SHA256SUMS
+            dist/RELEASE_NOTES.md
 
   # All-or-nothing publish: the ONLY writer to Releases, gated on package. Ships a full release.
   # On a tag push the tag already exists; on workflow_dispatch local_release there is no tag at all
@@ -291,6 +315,9 @@ jobs:
         with:
           tag_name: ${{ needs.build-macos.outputs.version }}
           target_commitish: ${{ github.sha }}
+          # Same file the appcast used, so the Release page and Sparkle tell the same story. Not in
+          # `files:` below, so it is the body and not an attached asset.
+          body_path: dist/RELEASE_NOTES.md
           files: |
             dist/*.pkg
             dist/appcast.xml
