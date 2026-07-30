@@ -88,7 +88,7 @@
   appLogin.state = [MDLoginItem isEnabled] ? NSOnState : NSOffState;
 
   [m addItem:[NSMenuItem separatorItem]];
-  [m addItemWithTitle:@"Quit Container Tools for Mavericks" action:@selector(terminate:) keyEquivalent:@"q"];
+  [m addItemWithTitle:@"Quit Container Tools for Mavericks" action:@selector(terminate:) keyEquivalent:@""];
 
   for (NSMenuItem *it in m.itemArray) if (it.action && it.action != @selector(terminate:)) it.target = self;
   [self.statusItem setMenu:m];

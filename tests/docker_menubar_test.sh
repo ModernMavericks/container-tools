@@ -30,6 +30,9 @@ grep -q 'ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater' "$AD" \
   || fail "'Check for Updates' must launch the bundled updater executable"
 grep -q '"--user"' "$AD" || fail "'Check for Updates' must run the updater with --user (interactive)"
 
+# A menu-bar extra (LSUIElement) has no app menu; binding Cmd-Q to Quit is not sensible.
+if grep -q 'keyEquivalent:@"q"' "$AD"; then fail "Quit must carry no shortcut (no Cmd-Q on a menu-bar extra)"; fi
+
 grep -q -- '--menubar-app' "$ROOT/cmake/package_pkg.sh" || fail "package_pkg.sh needs --menubar-app"
 grep -q 'Applications/Container Tools for Mavericks.app' "$ROOT/cmake/package_pkg.sh" \
   || fail "package_pkg.sh must install the app to /Applications"
