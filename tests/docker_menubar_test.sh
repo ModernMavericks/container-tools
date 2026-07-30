@@ -14,6 +14,15 @@ grep -q 'CFBundleIconFile' "$ROOT/menubar/Info.plist.in" || fail "Info.plist mus
 grep -q 'MACOSX_BUNDLE_ICON_FILE' "$ROOT/menubar/CMakeLists.txt" || fail "CMake must set MACOSX_BUNDLE_ICON_FILE"
 grep -q 'container-tools-updater.icns' "$ROOT/menubar/CMakeLists.txt" || fail "menubar must bundle the container art .icns"
 
+# Menu-bar glyph derives from the container art, NOT a whale (updater/ICON-CREDIT.txt),
+# is a template image (inverts on light/dark menu bars), and encodes four VM states.
+AD="$ROOT/menubar/AppDelegate.m"
+if grep -qi 'whale' "$AD"; then fail "menu-bar glyph must not be a whale (see updater/ICON-CREDIT.txt)"; fi
+if grep -qi 'docker mark' "$AD"; then fail "menu-bar glyph must not imitate the Docker mark"; fi
+grep -qi 'container' "$AD" || fail "menu-bar glyph must draw a container"
+grep -q 'template = YES' "$AD" || fail "menu-bar glyph must be a template image"
+grep -q '"no-fusion"' "$AD" || fail "glyph must distinguish needs-attention states (no-fusion/absent/error)"
+
 grep -q -- '--menubar-app' "$ROOT/cmake/package_pkg.sh" || fail "package_pkg.sh needs --menubar-app"
 grep -q 'Applications/Container Tools for Mavericks.app' "$ROOT/cmake/package_pkg.sh" \
   || fail "package_pkg.sh must install the app to /Applications"

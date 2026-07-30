@@ -120,25 +120,54 @@
 }
 
 - (NSImage *)iconForState:(NSString *)state {
+  BOOL running   = [state isEqualToString:@"running"];
+  BOOL working   = [state isEqualToString:@"working"] || [state isEqualToString:@"creating"];
+  BOOL attention = [state isEqualToString:@"no-fusion"] ||
+                   [state isEqualToString:@"absent"]    ||
+                   [state isEqualToString:@"error"];
+
   NSImage *img = [NSImage imageWithSize:NSMakeSize(18, 18) flipped:NO
       drawingHandler:^BOOL(NSRect r) {
-    [[NSColor blackColor] set];
-    // A whale silhouette (rounded body + tail fluke) — a nod to the Docker mark.
-    NSBezierPath *whale = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(2, 5, 11, 7)
-                                                          xRadius:3.5 yRadius:3.5];
-    NSBezierPath *tail = [NSBezierPath bezierPath];
-    [tail moveToPoint:NSMakePoint(11.5, 8.5)];
-    [tail lineToPoint:NSMakePoint(16.5, 5)];
-    [tail lineToPoint:NSMakePoint(16.5, 12)];
-    [tail closePath];
-    [whale appendBezierPath:tail];
-    if ([state isEqualToString:@"running"]) {
-      [whale fill];                                  // solid = up
-    } else if ([state isEqualToString:@"working"] || [state isEqualToString:@"creating"]) {
-      whale.lineWidth = 1.0; [whale stroke];         // outline + a bubble = transitioning
-      [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(6.75, 7.5, 2.5, 2.5)] fill];
+    [[NSColor blackColor] set];   // template image; the system re-tints it for the menu bar
+
+    // A single intermodal container, side-on: rounded body + top/bottom rails + corrugation
+    // ribs. Derived from the product's container art (updater/container-tools-updater.svg),
+    // reduced to a monochrome silhouette that survives 16px (see updater/ICON-CREDIT.txt).
+    NSRect body = NSMakeRect(2.0, 4.5, 14.0, 9.0);
+    NSBezierPath *container = [NSBezierPath bezierPathWithRoundedRect:body xRadius:1.5 yRadius:1.5];
+
+    // Rails (two horizontals) + corrugation (five verticals): stroked as detail when the
+    // container is an outline, or punched back out of the body when it is a solid silhouette.
+    NSBezierPath *detail = [NSBezierPath bezierPath];
+    for (int i = 1; i <= 5; i++) {
+      CGFloat x = NSMinX(body) + i * (NSWidth(body) / 6.0);
+      [detail moveToPoint:NSMakePoint(x, NSMinY(body) + 2.0)];
+      [detail lineToPoint:NSMakePoint(x, NSMaxY(body) - 2.0)];
+    }
+    for (int k = 0; k < 2; k++) {
+      CGFloat y = (k == 0) ? NSMinY(body) + 1.8 : NSMaxY(body) - 1.8;
+      [detail moveToPoint:NSMakePoint(NSMinX(body) + 1.0, y)];
+      [detail lineToPoint:NSMakePoint(NSMaxX(body) - 1.0, y)];
+    }
+
+    if (running) {
+      [container fill];                                  // solid body = up
+      NSGraphicsContext *gc = [NSGraphicsContext currentContext];
+      [gc setCompositingOperation:NSCompositeClear];     // punch rails/ribs back to transparent
+      detail.lineWidth = 1.0; [detail stroke];
+      [gc setCompositingOperation:NSCompositeSourceOver];
     } else {
-      whale.lineWidth = 1.5; [whale stroke];         // outline = down / needs setup
+      container.lineWidth = 1.4; [container stroke];     // outline = down / needs setup
+      detail.lineWidth = 0.9;   [detail stroke];
+    }
+
+    if (working) {
+      // Rising dots above the container = starting / creating.
+      for (int i = 0; i < 3; i++)
+        [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(5.0 + i * 3.0, 14.6, 1.6, 1.6)] fill];
+    } else if (attention) {
+      // Filled badge, lower-right = needs attention (no Fusion / absent / error).
+      [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(12.6, 1.8, 4.2, 4.2)] fill];
     }
     return YES;
   }];
