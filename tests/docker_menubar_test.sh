@@ -23,6 +23,13 @@ grep -qi 'container' "$AD" || fail "menu-bar glyph must draw a container"
 grep -q 'template = YES' "$AD" || fail "menu-bar glyph must be a template image"
 grep -q '"no-fusion"' "$AD" || fail "glyph must distinguish needs-attention states (no-fusion/absent/error)"
 
+# On-demand "Check for Updates" hands off to the bundled Sparkle updater with --user
+# (interactive check) — the same executable the daily LaunchAgent runs with --background.
+grep -q 'Check for Updates' "$AD" || fail "menu must offer 'Check for Updates'"
+grep -q 'ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater' "$AD" \
+  || fail "'Check for Updates' must launch the bundled updater executable"
+grep -q '"--user"' "$AD" || fail "'Check for Updates' must run the updater with --user (interactive)"
+
 grep -q -- '--menubar-app' "$ROOT/cmake/package_pkg.sh" || fail "package_pkg.sh needs --menubar-app"
 grep -q 'Applications/Container Tools for Mavericks.app' "$ROOT/cmake/package_pkg.sh" \
   || fail "package_pkg.sh must install the app to /Applications"
