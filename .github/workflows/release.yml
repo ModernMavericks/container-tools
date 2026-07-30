@@ -287,38 +287,27 @@ jobs:
             --channel-title "Container Tools for Mavericks" \
             --version "$VER" --pkg-url "$URL" --min-os 10.9.5 \
             --notes-file "release-notes/$VER.md" --pkg "$PKG" > dist/appcast.xml
-          (cd dist && shasum -a 256 ./*.pkg > SHA256SUMS)
           echo "=== appcast.xml ==="; cat dist/appcast.xml
+      # No SHA256SUMS here: publish-release.yml regenerates it over everything it attaches, so the
+      # checksums cover the appcast too and no repo hand-rolls that step.
       - uses: actions/upload-artifact@v7
         with:
           name: docker-pkg
           path: |
             dist/*.pkg
             dist/appcast.xml
-            dist/SHA256SUMS
             dist/RELEASE_NOTES.md
 
-  # All-or-nothing publish: the ONLY writer to Releases, gated on package. Ships a full release.
-  # On a tag push the tag already exists; on workflow_dispatch local_release there is no tag at all
-  # yet (a GITHUB_TOKEN-pushed tag wouldn't trigger anything anyway) -- explicit tag_name +
-  # target_commitish tell action-gh-release to mint the -mavericks.(N+1) tag at this commit itself,
-  # inline, in the same run that publishes it. No second-hop, no push required.
+  # All-or-nothing publish: the ONLY writer to Releases, gated on package. The shared workflow owns
+  # the mechanics -- it regenerates SHA256SUMS, uses RELEASE_NOTES.md from the artifact as the body
+  # (failing if it is missing or empty), and mints the tag at this commit, which a dispatch-cut
+  # repackage needs since a GITHUB_TOKEN-pushed tag triggers nothing.
   publish:
     if: needs.build-macos.outputs.publish == 'true'
     needs: [build-macos, package]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v8
-        with: { path: dist, merge-multiple: true }
-      - name: Publish release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ needs.build-macos.outputs.version }}
-          target_commitish: ${{ github.sha }}
-          # Same file the appcast used, so the Release page and Sparkle tell the same story. Not in
-          # `files:` below, so it is the body and not an attached asset.
-          body_path: dist/RELEASE_NOTES.md
-          files: |
-            dist/*.pkg
-            dist/appcast.xml
-            dist/SHA256SUMS
+    permissions:
+      contents: write
+    uses: ModernMavericks/shared-cmake/.github/workflows/publish-release.yml@v1
+    with:
+      version: ${{ needs.build-macos.outputs.version }}
+      artifact: docker-pkg
