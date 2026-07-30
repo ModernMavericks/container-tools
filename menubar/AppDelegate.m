@@ -112,20 +112,21 @@
 }
 
 - (void)checkForUpdates:(id)s {
-  // Hand off to the bundled Sparkle updater's interactive check (shows the update dialog,
-  // or an "up to date" alert) — the same executable the daily LaunchAgent runs with
-  // --background. Reap the child on a background queue so this long-lived menu-bar app
-  // leaves no zombies across repeated checks.
+  // Hand off to the bundled Sparkle updater's interactive check (shows the update dialog, or an
+  // "up to date" alert). Launch it via LaunchServices (`open`), NOT a direct fork+exec of the
+  // executable: Sparkle's package install needs a LaunchServices-launched host — a fork+exec child
+  // has no LaunchServices session, so AuthorizationExecuteWithPrivileges can't run its privileged
+  // helper and the install fails with -60008 (see the updater's Info.plist note in shared-cmake).
+  // `open` returns as soon as it hands off, so there's nothing to reap.
   NSTask *t = [[NSTask alloc] init];
-  t.launchPath = @"/Library/Application Support/ModernMavericks/ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater";
-  t.arguments = @[@"--user"];
+  t.launchPath = @"/usr/bin/open";
+  t.arguments = @[@"/Library/Application Support/ModernMavericks/ContainerToolsUpdater.app",
+                  @"--args", @"--user"];
   @try {
     [t launch];
   } @catch (NSException *e) {
     NSLog(@"Container Tools: could not launch updater: %@", e);
-    return;
   }
-  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{ [t waitUntilExit]; });
 }
 
 - (void)toggleVMLogin:(id)s {

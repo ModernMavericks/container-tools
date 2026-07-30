@@ -26,8 +26,14 @@ grep -q '"no-fusion"' "$AD" || fail "glyph must distinguish needs-attention stat
 # On-demand "Check for Updates" hands off to the bundled Sparkle updater with --user
 # (interactive check) — the same executable the daily LaunchAgent runs with --background.
 grep -q 'Check for Updates' "$AD" || fail "menu must offer 'Check for Updates'"
-grep -q 'ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater' "$AD" \
-  || fail "'Check for Updates' must launch the bundled updater executable"
+# Must launch the updater via LaunchServices (open), NOT fork+exec on the executable: Sparkle's
+# package-install needs a LaunchServices-launched host, or AuthorizationExecuteWithPrivileges fails
+# (-60008). See the updater's Info.plist.in comment in shared-cmake.
+grep -q '/usr/bin/open' "$AD" || fail "'Check for Updates' must launch the updater via open (LaunchServices), not fork+exec"
+grep -q 'ContainerToolsUpdater.app' "$AD" || fail "'Check for Updates' must open the bundled updater .app"
+if grep -q 'ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater' "$AD"; then
+  fail "'Check for Updates' must NOT fork+exec the updater executable directly (breaks Sparkle install)"
+fi
 grep -q '"--user"' "$AD" || fail "'Check for Updates' must run the updater with --user (interactive)"
 
 # A menu-bar extra (LSUIElement) has no app menu; binding Cmd-Q to Quit is not sensible.
