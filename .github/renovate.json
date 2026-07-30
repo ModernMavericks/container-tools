@@ -16,9 +16,9 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github/workflows/release\\.yml$/"
+        "/^components/golang/version$/"
       ],
-      "matchStrings": ["(?<currentValue>[0-9][^\\s#\"']*)\\s*#\\s*mavericks-golang"],
+      "matchStrings": ["^(?<currentValue>.+?)\\s*$"],
       "depNameTemplate": "mavericks-golang",
       "packageNameTemplate": "ModernMavericks/golang",
       "datasourceTemplate": "github-releases",

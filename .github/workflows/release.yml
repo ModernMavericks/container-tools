@@ -17,19 +17,29 @@ on:
   pull_request:
     branches: [main]          # PR build is the status check Renovate automerge waits on
   workflow_dispatch:
+    inputs:
+      local_release:
+        description: "Cut+publish a -mavericks.(N+1) repackage (same date, rebuilt with current ingredients)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 # Superseded runs cancel on the same ref: a PR's new commit cancels its prior run, and rapid main
 # merges cancel superseded main builds. Each tag is a unique ref, so a publish build is never cancelled.
+# workflow_dispatch runs (local_release) get their own group-per-run-id: they land on the SAME ref as
+# ordinary main pushes (refs/heads/main), and must never cancel -- or be cancelled by -- those builds.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-macos:
     runs-on: macos-26
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      publish: ${{ steps.ver.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
 
@@ -38,23 +48,44 @@ jobs:
       - name: Install mavericks-shared-cmake
         uses: ModernMavericks/shared-cmake/.github/actions/install@v1
 
-      - name: Version = VERSION file (tag must match)
+      # Three ways in here decide two things: what VER is, and whether this run publishes.
+      #   - a *-mavericks.* tag: VER = the tag (must match the committed VERSION file); publish=yes.
+      #   - workflow_dispatch(local_release=true): VER = <same date>-mavericks.(N+1), computed from the
+      #     committed VERSION file; publish=yes. Written back to the local VERSION file (NOT committed)
+      #     so this job's own cmake configure (MAVERICKS_DOCKER_VERSION, the updater's bundle version)
+      #     embeds the repackage's real version, not the stale on-disk one.
+      #   - anything else (push to main / PR): VER = the committed VERSION file, unchanged; publish=no.
+      - name: Decide version + whether this run publishes
         id: ver
         run: |
-          VER=$(cat VERSION)
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            VER="${GITHUB_REF_NAME}"
+            FILEVER=$(cat VERSION)
+            if [ "$VER" != "$FILEVER" ]; then
+              echo "::error::tag $VER != VERSION file $FILEVER"; exit 1; fi
+            PUBLISH=true
+          elif [ "${GITHUB_EVENT_NAME}" = workflow_dispatch ] && [ "${{ github.event.inputs.local_release }}" = "true" ]; then
+            CUR=$(cat VERSION)
+            UP="${CUR%%-mavericks.*}"; N="${CUR##*-mavericks.}"
+            case "$N" in ''|*[!0-9]*) echo "::error::unexpected VERSION '$CUR'"; exit 1;; esac
+            VER="${UP}-mavericks.$((N + 1))"
+            PUBLISH=true
+            printf '%s\n' "$VER" > VERSION
+          else
+            VER=$(cat VERSION)
+            PUBLISH=false
+          fi
           echo "version=$VER" >> "$GITHUB_OUTPUT"
-          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "$VER" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} != $VER (VERSION file)"; exit 1; fi
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
 
       # The 10.9-correct Go toolchain (patched mavericks-golang cross .pkg; see the comment history).
       - name: Install patched Go (mavericks-golang cross toolchain)
-        env:
-          # Renovate bumps this via the '# mavericks-golang' customManager in .github/renovate.json
-          # (github-releases on ModernMavericks/golang). No pinned sha256 to hand-maintain: we verify
-          # the download against golang's own published SHA256SUMS for the pinned release.
-          GO_PKG_REF:    1.26.5-mavericks.1  # mavericks-golang
         run: |
-          ver="$GO_PKG_REF"
+          # Renovate bumps components/golang/version via the '# mavericks-golang' customManager in
+          # .github/renovate.json (github-releases on ModernMavericks/golang). No pinned sha256 to
+          # hand-maintain: we verify the download against golang's own published SHA256SUMS for the
+          # pinned release.
+          ver="$(cat components/golang/version)"
           base="https://github.com/ModernMavericks/golang/releases/download/${ver}"
           curl -fL --retry 3 -o SHA256SUMS "$base/SHA256SUMS"
           # golang renamed its cross asset prefix go126- -> golang- at 1.26.5-mavericks.1; accept either.
@@ -110,7 +141,7 @@ jobs:
       # On tags: bundle the packaging inputs into ONE tarball so executable bits (binaries, the .app's
       # Mach-Os, the signer) survive the artifact round-trip -- artifacts otherwise drop file modes.
       - name: Stage + upload packaging inputs
-        if: github.ref_type == 'tag'
+        if: steps.ver.outputs.publish == 'true'
         run: |
           export COPYFILE_DISABLE=1
           mkdir -p stage
@@ -122,8 +153,8 @@ jobs:
           cp -R build/menubar/DockerMenu.app stage/DockerMenu.app
           find stage -name '._*' -delete 2>/dev/null || true
           tar -C stage -czf packaging-inputs.tgz .
-      - name: Upload packaging inputs (tags only)
-        if: github.ref_type == 'tag'
+      - name: Upload packaging inputs (publishing runs only)
+        if: steps.ver.outputs.publish == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: packaging-inputs
@@ -133,8 +164,11 @@ jobs:
   # the .pkg. The iso reproducibility gates (iso_fetch_verify / iso_fingerprint) and the boot-proof are
   # owned by boot2docker.yml + the box -- running them here would duplicate that and couple the release
   # to boot2docker baseline maintenance. Acceptance for the shipped iso is the manual real-10.9 boot-test.
+  # Gated the same way build-macos's "publish" decision is (tag, or workflow_dispatch local_release=
+  # true) -- duplicated as a raw expression rather than a `needs: [build-macos]` edge, so this job
+  # keeps running in parallel with build-macos instead of waiting on it.
   build-iso:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.local_release == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -150,7 +184,7 @@ jobs:
   # Assemble + sign the product .pkg and render the signed appcast. Needs the mac binaries/updater and
   # the iso; runs on macos-26 for pkgbuild/productbuild.
   package:
-    if: github.ref_type == 'tag'
+    if: needs.build-macos.outputs.publish == 'true'
     needs: [build-macos, build-iso]
     runs-on: macos-26
     steps:
@@ -162,16 +196,39 @@ jobs:
       - uses: actions/download-artifact@v8
         with: { name: boot2docker-iso, path: iso }
 
+      # This job's checkout is fresh (a separate runner from build-macos), so it does NOT see the
+      # VERSION mutation build-macos made locally for a local_release repackage. Use the authoritative
+      # version build-macos decided (needs.build-macos.outputs.version), not `cat VERSION`. For the
+      # same reason, release-notes/$VER.md for a freshly-cut local_release version can't exist in this
+      # checkout yet (nothing was committed) -- stub it so sign_and_appcast.sh's --notes-file has a
+      # non-empty file to read.
+      - name: Ensure release-notes/$VER.md exists
+        env:
+          VER: ${{ needs.build-macos.outputs.version }}
+        run: |
+          NOTES="release-notes/$VER.md"
+          if [ ! -s "$NOTES" ]; then
+            mkdir -p release-notes
+            {
+              echo "ModernMavericks container-tools $VER."
+              echo
+              echo "- Repackage rebuilt with the current build ingredients (see the component pins"
+              echo "  under components/ for what moved). No change intended to the docker component"
+              echo "  versions themselves."
+              echo "- Automatically cut via workflow_dispatch local_release."
+            } > "$NOTES"
+          fi
+
       - name: Assemble + sign the .pkg, render the appcast
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}   # sign_and_appcast.sh fetches ed25519-sign via `gh` -> needs auth (else 403 rate-limit)
+          VER: ${{ needs.build-macos.outputs.version }}
         run: |
           [ -n "$SPARKLE_PRIVATE_KEY" ] || { echo "::error::SPARKLE_PRIVATE_KEY secret not set"; exit 1; }
           # Resolve the installed shared-cmake scripts dir via the CMake user package registry.
           SH="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
           [ -d "$SH" ] || { echo "::error::shared-cmake scripts not found at $SH"; exit 1; }
-          VER=$(cat VERSION)
           mkdir -p in dist
           tar -C in -xzf dl/packaging-inputs.tgz      # restores executable bits
           PKG="dist/container-tools-$VER.pkg"
@@ -208,9 +265,13 @@ jobs:
             dist/SHA256SUMS
 
   # All-or-nothing publish: the ONLY writer to Releases, gated on package. Ships a full release.
+  # On a tag push the tag already exists; on workflow_dispatch local_release there is no tag at all
+  # yet (a GITHUB_TOKEN-pushed tag wouldn't trigger anything anyway) -- explicit tag_name +
+  # target_commitish tell action-gh-release to mint the -mavericks.(N+1) tag at this commit itself,
+  # inline, in the same run that publishes it. No second-hop, no push required.
   publish:
-    if: github.ref_type == 'tag'
-    needs: [package]
+    if: needs.build-macos.outputs.publish == 'true'
+    needs: [build-macos, package]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -218,6 +279,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ needs.build-macos.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: |
             dist/*.pkg
             dist/appcast.xml

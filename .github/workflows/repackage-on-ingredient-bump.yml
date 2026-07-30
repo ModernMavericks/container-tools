@@ -1,0 +1,12 @@
+name: repackage-on-ingredient-bump
+on:
+  push:
+    branches: [main]
+    paths: ['components/**']
+jobs:
+  repackage:
+    permissions:
+      actions: write
+    uses: ModernMavericks/shared-cmake/.github/workflows/repackage-on-ingredient-bump.yml@v1
+    with:
+      own-upstream-paths: ""
