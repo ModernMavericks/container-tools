@@ -2,6 +2,18 @@
 # docker-machine-common.sh — shared constants + helpers for docker-machine-bootstrap
 # and docker-machine-ctl. SOURCED, not executed. Honors the MAVERICKS_DOCKER_* test seams.
 
+# The menu-bar app (and anything else launched by LaunchServices) runs with a minimal PATH
+# — /usr/bin:/bin:/usr/sbin:/sbin — that omits the install bindir. A bare `docker-machine`/
+# `docker` then fails to resolve, so every verb driven from the GUI silently misreports:
+# status_word() -> "absent" while the VM is really Stopped, and start/stop no-op. Guarantee
+# our bindir is reachable regardless of the caller's PATH. Appended (not prepended) so a
+# test/caller stub earlier on PATH still wins. Found dogfooding, 2026-07-29.
+BINDIR=${MAVERICKS_DOCKER_BINDIR:-/usr/local/bin}
+case ":$PATH:" in
+  *:"$BINDIR":*) ;;
+  *) PATH="$PATH:$BINDIR"; export PATH ;;
+esac
+
 MACHINE=container-tools
 CONTEXT=mavericks
 ISO=${MAVERICKS_DOCKER_ISO:-/usr/local/share/modernmavericks/container-tools/boot2docker.iso}

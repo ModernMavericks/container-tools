@@ -49,7 +49,26 @@ case_write_state() {
   teardown
 }
 
+case_bindir_on_path() {
+  # A GUI caller (the menu-bar app, launched by LaunchServices) gets a PATH without the install
+  # bindir, so a bare `docker-machine` fails to resolve and status_word silently reports "absent"
+  # while the VM is really Stopped (start/stop likewise no-op). common.sh must guarantee the
+  # install bindir is reachable regardless of the caller's PATH. Regression: dogfooding 2026-07-29.
+  setup
+  GUIBIN="$WORK/guibin"; mkdir -p "$GUIBIN"
+  cat > "$GUIBIN/docker-machine" <<'EOF'
+#!/bin/sh
+[ "$1" = status ] && { echo Stopped; exit 0; }
+EOF
+  chmod +x "$GUIBIN/docker-machine"
+  ( export MAVERICKS_DOCKER_BINDIR="$GUIBIN"; PATH="/usr/bin:/bin"
+    . "$COMMON"; [ "$(status_word)" = stopped ] ) \
+    || fail "GUI PATH (no bindir): common.sh must add MAVERICKS_DOCKER_BINDIR so docker-machine resolves"
+  teardown
+}
+
 case_status_word
 case_creating
 case_write_state
+case_bindir_on_path
 echo "docker_common_test: OK"
