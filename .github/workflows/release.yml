@@ -290,6 +290,15 @@ jobs:
           echo "=== appcast.xml ==="; cat dist/appcast.xml
       # No SHA256SUMS here: publish-release.yml regenerates it over everything it attaches, so the
       # checksums cover the appcast too and no repo hand-rolls that step.
+      # Conformance: the .pkg, the appcast and the version we are about to publish must agree with each
+      # other and with the family's schemes. This job only runs when publishing, so no extra gate.
+      - name: Artifact conformance
+        env:
+          VER: ${{ needs.build-macos.outputs.version }}
+        run: |
+          sh "$MSC_SCRIPTS/artifact-facts.sh" dist "$VER" \
+            | sh "$MSC_SCRIPTS/check-artifact-conformance.sh"
+
       - uses: actions/upload-artifact@v7
         with:
           name: docker-pkg
