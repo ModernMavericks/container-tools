@@ -79,16 +79,17 @@ jobs:
       - name: Decide version + whether this run publishes
         id: ver
         run: |
+          # The MODE comes from release-mode.sh so that build-iso, which has no way to know a
+          # repackage is in progress, reaches the same answer. They disagreed once: .15 here, .14
+          # there, in one run.
+          MODE="$(LOCAL_RELEASE="${{ github.event.inputs.local_release }}" sh "$MSC_SCRIPTS/release-mode.sh")"
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
             VER="${GITHUB_REF_NAME}"
             printf '%s\n' "$VER" > VERSION
             PUBLISH=true
-          elif [ "${GITHUB_EVENT_NAME}" = workflow_dispatch ] && [ "${{ github.event.inputs.local_release }}" = "true" ]; then
-            VER="$(sh "$MSC_SCRIPTS/resolve-version.sh" local)"
-            PUBLISH=true
           else
-            VER="$(sh "$MSC_SCRIPTS/resolve-version.sh")"
-            PUBLISH=false
+            VER="$(sh "$MSC_SCRIPTS/resolve-version.sh" "$MODE")"
+            [ "$MODE" = local ] && PUBLISH=true || PUBLISH=false
           fi
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
@@ -172,7 +173,7 @@ jobs:
           # binaries and an iso built on Linux -- so the risk worth catching is them coming from
           # different commits (a re-run, a stale artifact). Conformance compares the records.
           sh "$MSC_SCRIPTS/build-info.sh" build-info-macos.txt \
-            variant=macos commit="$GITHUB_SHA" \
+            variant=macos commit="$GITHUB_SHA" version="${{ steps.ver.outputs.version }}" \
             docker_cli="$(sed -n 's/^REF=//p' components/docker-cli/version)" \
             docker_compose="$(sed -n 's/^REF=//p' components/docker-compose/version)" \
             docker_machine="$(sed -n 's/^REF=//p' components/docker-machine/version)" \
@@ -204,13 +205,23 @@ jobs:
       # clone_pinned.sh lives in shared-cmake; the iso build resolves it via find_package.
       - name: Install mavericks-shared-cmake
         uses: ModernMavericks/shared-cmake/.github/actions/install@v1
+      # Resolve the version BEFORE configuring, using the run's mode -- otherwise this job derives the
+      # shipped N while build-macos derives N+1, and one .pkg is built from two versions. A tag build
+      # needs no special case: the tag exists by now, so auto returns exactly it.
+      - name: Resolve the version this run is building
+        env:
+          LOCAL_RELEASE: ${{ github.event.inputs.local_release }}
+        run: |
+          VER="$(sh "$MSC_SCRIPTS/resolve-version.sh" "$(sh "$MSC_SCRIPTS/release-mode.sh")")"
+          echo "iso job building $VER"
+
       - name: Build the boot2docker iso (same cmake iso build the box runs)
         run: |
           cmake --preset iso
           cmake --build --preset iso
           # The other half of the record (see build-macos): same commit, plus the iso's own pins.
           sh "$MSC_SCRIPTS/build-info.sh" build-info-iso.txt \
-            variant=iso commit="$GITHUB_SHA" \
+            variant=iso commit="$GITHUB_SHA" version="$(cat VERSION)" \
             boot2docker="$(sed -n 's/^REF=//p' components/boot2docker/version)" \
             boot2docker_digest="$(sed -n 's/^DIGEST=//p' components/boot2docker/version)" \
             iso_sha256="$(shasum -a 256 build-iso/boot2docker/boot2docker.iso | cut -d' ' -f1)"
