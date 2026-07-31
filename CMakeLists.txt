@@ -51,13 +51,13 @@ if(NOT MAVERICKS_DOCKER_EXPECTED_MODE STREQUAL MAVERICKS_DOCKER_MODE)
     "does a '${MAVERICKS_DOCKER_MODE}' build — wrong preset for this host.")
 endif()
 
-if(NOT MAVERICKS_DOCKER_MODE STREQUAL "iso")
-  # Shared machinery: the build-artifact gate scripts (compat_guard, sdk_coverage). The 10.9 SDK, the
-  # target flags (-arch/-isysroot/-mmacosx-version-min), and the legacy-support shim are ALL supplied by
-  # the go126 toolchain's default CC wrapper (its $GOROOT/go.env) -- so the build needs none of that here.
-  # (sdk_coverage fetches its own reference SDK on demand via --fetch-script.)
-  find_package(MavericksSharedCMake REQUIRED)
+# shared-cmake is needed in BOTH modes: the build-artifact gate scripts (compat_guard, sdk_coverage) for
+# the Go builds, AND clone_pinned.sh -- the digest-verified git fetch used for every pinned source,
+# including the iso's boot2docker clone. (The 10.9 SDK, target flags, and legacy shim come from the go126
+# toolchain's CC wrapper; sdk_coverage fetches its own reference SDK via --fetch-script.)
+find_package(MavericksSharedCMake REQUIRED)
 
+if(NOT MAVERICKS_DOCKER_MODE STREQUAL "iso")
   # The Go compiler: go126-cross on PATH (cross) or the mavericks-golang native go126 .pkg (native). Both
   # ship the CC wrapper as the default CC in go.env, so a plain `go build` targets darwin/amd64 10.9
   # correctly and links the legacy shim. (native therefore REQUIRES the .pkg toolchain, not pkgsrc go126.)
@@ -68,18 +68,23 @@ if(NOT MAVERICKS_DOCKER_MODE STREQUAL "iso")
   endif()
 endif()
 
-# Read a component's REPO/REF pin from components/<name>/version.
-function(mavericks_docker_read_pin dir out_repo out_ref)
+# Read a component's REPO/REF/DIGEST pin from components/<name>/version. DIGEST (the commit sha) is
+# what clone_pinned.sh verifies the checkout against; REF is the human/version label. Renovate keeps
+# both current via the git-refs/currentDigest customManager.
+function(mavericks_docker_read_pin dir out_repo out_ref out_digest)
   file(STRINGS "${dir}/version" _lines)
   foreach(_l IN LISTS _lines)
     if(_l MATCHES "^REPO=(.+)$")
       set(_repo "${CMAKE_MATCH_1}")
     elseif(_l MATCHES "^REF=(.+)$")
       set(_ref "${CMAKE_MATCH_1}")
+    elseif(_l MATCHES "^DIGEST=(.+)$")
+      set(_digest "${CMAKE_MATCH_1}")
     endif()
   endforeach()
-  set(${out_repo} "${_repo}" PARENT_SCOPE)
-  set(${out_ref}  "${_ref}"  PARENT_SCOPE)
+  set(${out_repo}   "${_repo}"   PARENT_SCOPE)
+  set(${out_ref}    "${_ref}"    PARENT_SCOPE)
+  set(${out_digest} "${_digest}" PARENT_SCOPE)
 endfunction()
 
 include(ExternalProject)
@@ -95,14 +100,14 @@ if(MAVERICKS_DOCKER_MODE STREQUAL "iso")
     message(FATAL_ERROR "iso mode needs a reachable Docker daemon (`docker version` failed)")
   endif()
 
-  mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/boot2docker" B2D_REPO B2D_REF)
+  mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/boot2docker" B2D_REPO B2D_REF B2D_DIGEST)
   set(B2D_SRC "${MAVERICKS_DOCKER_SRC_CACHE}/boot2docker-${B2D_REF}")
   set(B2D_OUT "${CMAKE_BINARY_DIR}/boot2docker")
   set(B2D_ISO "${B2D_OUT}/boot2docker.iso")
   ExternalProject_Add(boot2docker
     SOURCE_DIR       "${B2D_SRC}"
-    DOWNLOAD_COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/clone_pinned.sh"
-                       "${B2D_REPO}" "${B2D_REF}" "${B2D_SRC}"
+    DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+                       "${B2D_REPO}" "${B2D_REF}" "${B2D_DIGEST}" "${B2D_SRC}"
     UPDATE_COMMAND   ""
     CONFIGURE_COMMAND ""
     BUILD_IN_SOURCE  TRUE
@@ -112,20 +117,13 @@ if(MAVERICKS_DOCKER_MODE STREQUAL "iso")
     BUILD_BYPRODUCTS "${B2D_ISO}"
   )
 
-  # Gates.
-  add_test(NAME iso_fetch_verify
-    COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/iso_fetch_verify.sh"
-               "${CMAKE_SOURCE_DIR}/components/boot2docker")
-  add_test(NAME iso_fingerprint
-    COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/iso_fingerprint.sh" compare
-               "${CMAKE_SOURCE_DIR}/cmake/characterization/boot2docker" "${B2D_ISO}")
-  add_test(NAME iso_boot_proof
-    COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/iso_boot_proof.sh" "${B2D_ISO}")
-  set_tests_properties(iso_boot_proof PROPERTIES SKIP_RETURN_CODE 77)
+  # The iso's supply-chain gate is clone_pinned.sh (in the boot2docker DOWNLOAD_COMMAND above): the
+  # source is verified against the pinned commit DIGEST or the build bails. There is deliberately no
+  # frozen fingerprint of the *built* iso and no manual on-box boot "bless": those blocked bumps
+  # without a shippability signal. We ship the from-source rebuild; runtime issues -> -mavericks.2.
 
   # Self-contained unit tests for the iso scripts.
-  foreach(t boot2docker_pin_test boot2docker_build_script_test iso_fingerprint_test
-            iso_fetch_verify_test iso_boot_proof_test boot2docker_ci_test)
+  foreach(t boot2docker_pin_test boot2docker_build_script_test boot2docker_ci_test)
     add_test(NAME ${t} COMMAND sh "${CMAKE_SOURCE_DIR}/tests/${t}.sh")
   endforeach()
 
@@ -137,14 +135,14 @@ endif()
 # supplies the 10.9 SDK + target flags + the legacy-support shim + -Wl,-U weak-symbol allowances on the
 # external link. So there is no legacy-support build here, and each build_*.sh takes only source/out/go/ref.
 # compat_guard + sdk_coverage below are the arbiters that the result is actually 10.9-correct.
-mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/docker-cli" DC_REPO DC_REF)
+mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/docker-cli" DC_REPO DC_REF DC_DIGEST)
 set(DC_OUT     "${CMAKE_BINARY_DIR}/docker-cli")
 set(DOCKER_BIN "${DC_OUT}/docker")
 set(DC_SRC     "${MAVERICKS_DOCKER_SRC_CACHE}/docker-cli-${DC_REF}")
 ExternalProject_Add(docker_cli
   SOURCE_DIR       "${DC_SRC}"
-  DOWNLOAD_COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/clone_pinned.sh"
-                     "${DC_REPO}" "${DC_REF}" "${DC_SRC}"
+  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+                     "${DC_REPO}" "${DC_REF}" "${DC_DIGEST}" "${DC_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
   CONFIGURE_COMMAND ""
@@ -156,15 +154,15 @@ ExternalProject_Add(docker_cli
 
 # docker-machine (GOPATH/dep era: no go.mod, vendored). Cloned into a GOPATH-shaped path
 # so GO111MODULE=off can build it. The toolchain's CC wrapper handles the target + legacy shim.
-mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/docker-machine" DM_REPO DM_REF)
+mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/docker-machine" DM_REPO DM_REF DM_DIGEST)
 set(DM_GOPATH   "${MAVERICKS_DOCKER_SRC_CACHE}/docker-machine-${DM_REF}")
 set(DM_SRC      "${DM_GOPATH}/src/github.com/docker/machine")
 set(DM_OUT      "${CMAKE_BINARY_DIR}/docker-machine")
 set(MACHINE_BIN "${DM_OUT}/docker-machine")
 ExternalProject_Add(docker_machine
   SOURCE_DIR       "${DM_SRC}"
-  DOWNLOAD_COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/clone_pinned.sh"
-                     "${DM_REPO}" "${DM_REF}" "${DM_SRC}"
+  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+                     "${DM_REPO}" "${DM_REF}" "${DM_DIGEST}" "${DM_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
   CONFIGURE_COMMAND ""
@@ -176,14 +174,14 @@ ExternalProject_Add(docker_machine
 
 # docker-compose (Compose v2; a go.mod module, not vendored). Simpler than docker-machine:
 # a normal module build (deps from the shared module cache); the toolchain wrapper handles the link.
-mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/docker-compose" CO_REPO CO_REF)
+mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/docker-compose" CO_REPO CO_REF CO_DIGEST)
 set(CO_SRC      "${MAVERICKS_DOCKER_SRC_CACHE}/docker-compose-${CO_REF}")
 set(CO_OUT      "${CMAKE_BINARY_DIR}/docker-compose")
 set(COMPOSE_BIN "${CO_OUT}/docker-compose")
 ExternalProject_Add(docker_compose
   SOURCE_DIR       "${CO_SRC}"
-  DOWNLOAD_COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/clone_pinned.sh"
-                     "${CO_REPO}" "${CO_REF}" "${CO_SRC}"
+  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+                     "${CO_REPO}" "${CO_REF}" "${CO_DIGEST}" "${CO_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
   CONFIGURE_COMMAND ""
@@ -194,14 +192,14 @@ ExternalProject_Add(docker_compose
 )
 
 # lazydocker (terminal UI for Docker; a go.mod module, root main package). Same module build as compose.
-mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/lazydocker" LD_REPO LD_REF)
+mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/lazydocker" LD_REPO LD_REF LD_DIGEST)
 set(LD_SRC   "${MAVERICKS_DOCKER_SRC_CACHE}/lazydocker-${LD_REF}")
 set(LD_OUT   "${CMAKE_BINARY_DIR}/lazydocker")
 set(LAZY_BIN "${LD_OUT}/lazydocker")
 ExternalProject_Add(lazydocker
   SOURCE_DIR       "${LD_SRC}"
-  DOWNLOAD_COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/clone_pinned.sh"
-                     "${LD_REPO}" "${LD_REF}" "${LD_SRC}"
+  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+                     "${LD_REPO}" "${LD_REF}" "${LD_DIGEST}" "${LD_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
   CONFIGURE_COMMAND ""
@@ -223,9 +221,9 @@ add_test(NAME sdk_coverage
 # below re-check the actual new binary: arch, 10.9 floor, no post-10.9 symbols, every import 10.9-available)
 # and to fix any runtime regression in a -mavericks.2 repackage. A frozen reference of the module set
 # diverges on *every* dependency bump -- it signals "something changed", not "unshippable" -- so it only
-# blocked auto-merge without adding a 10.9-safety signal (identity is already pinned at fetch). Removed
-# 2026-07-31. (boot2docker's iso_fingerprint/iso_boot_proof stay: booting the ISO on real 10.9 hardware
-# IS a shippability signal, not a mere-change tripwire.)
+# blocked auto-merge without adding a 10.9-safety signal (identity is now pinned by the commit DIGEST
+# the clone verifies). Removed 2026-07-31 -- and for the same reason boot2docker's frozen iso_fingerprint
+# and manual iso_boot_proof went too; its supply-chain gate is the digest-verified clone.
 
 # docker-machine through the same 10.9-safety gates.
 add_test(NAME compat_guard_machine

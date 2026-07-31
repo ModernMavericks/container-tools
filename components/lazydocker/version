@@ -1,2 +1,3 @@
 REPO=https://github.com/jesseduffield/lazydocker.git
 REF=v0.25.2
+DIGEST=7e7aadc2071d58031bf2daafca1fbd4093efc23f

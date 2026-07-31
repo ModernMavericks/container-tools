@@ -9,7 +9,7 @@
       "managerFilePatterns": [
         "/^components/[^/]+/version$/"
       ],
-      "matchStrings": ["REPO=(?<packageName>\\S+)\\.git\\nREF=(?<currentValue>\\S+)"],
+      "matchStrings": ["REPO=(?<packageName>\\S+?)\\.git\\s+REF=(?<currentValue>\\S+)\\s+DIGEST=(?<currentDigest>[0-9a-f]{40})"],
       "datasourceTemplate": "git-refs",
       "versioningTemplate": "semver"
     },

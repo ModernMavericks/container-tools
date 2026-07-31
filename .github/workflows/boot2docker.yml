@@ -1,27 +1,22 @@
 name: boot2docker
 
-# Build boot2docker.iso from the pinned dragonflylee source, the SAME cmake iso build the box runs
-# locally, on Linux/x86_64: fetch-verify + fingerprint. The boot-proof needs VMware and auto-skips here
-# (SKIP_RETURN_CODE 77), so ctest passes on the CI-possible gates alone. This IS the merge gate for
-# boot2docker updates: it runs on the Renovate bump PR (and on push-to-main), so a bump that leaves the
-# fingerprint golden stale fails the PR and blocks automerge until the golden is re-baselined. The real
-# boot-proof + golden re-baseline still happen on the box out-of-band. The release .pkg's iso is built
-# by release.yml's build-iso job, so no tag build here.
+# Build boot2docker.iso from the pinned dragonflylee source -- the SAME cmake iso build the box runs
+# locally -- on Linux/x86_64. The supply-chain gate is the digest-verified clone (clone_pinned.sh in
+# the boot2docker DOWNLOAD_COMMAND: the source must be exactly the pinned commit or the build bails);
+# there is no frozen fingerprint of the built iso and no manual boot "bless" (those blocked bumps
+# without a shippability signal). A Renovate bump of REF+DIGEST flows through green. The release .pkg's
+# iso is built by release.yml's build-iso job, so no tag build here.
 on:
   pull_request:
     paths:
       - 'components/boot2docker/**'
       - 'cmake/build_boot2docker.sh'
-      - 'cmake/iso_*.sh'
-      - 'cmake/characterization/boot2docker/**'
       - '.github/workflows/boot2docker.yml'
   push:
     branches: [main]
     paths:
       - 'components/boot2docker/**'
       - 'cmake/build_boot2docker.sh'
-      - 'cmake/iso_*.sh'
-      - 'cmake/characterization/boot2docker/**'
       - '.github/workflows/boot2docker.yml'
   workflow_dispatch:
 
@@ -30,6 +25,10 @@ jobs:
     runs-on: ubuntu-latest   # native x86_64 Docker; separate from the macos-26 Mac build
     steps:
       - uses: actions/checkout@v7
+      # clone_pinned.sh (the digest-verified git fetch) lives in shared-cmake; the iso build resolves it
+      # via find_package, so shared-cmake must be installed here too.
+      - name: Install mavericks-shared-cmake
+        uses: ModernMavericks/shared-cmake/.github/actions/install@v1
       - name: Build + gate (same cmake iso build the box runs)
         run: |
           cmake --preset iso

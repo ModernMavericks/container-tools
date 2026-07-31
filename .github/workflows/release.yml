@@ -182,18 +182,20 @@ jobs:
           name: packaging-inputs
           path: packaging-inputs.tgz
 
-  # boot2docker.iso on native Linux/Docker (macos-26 can't build it). We only BUILD the iso here for
-  # the .pkg. The iso reproducibility gates (iso_fetch_verify / iso_fingerprint) and the boot-proof are
-  # owned by boot2docker.yml + the box -- running them here would duplicate that and couple the release
-  # to boot2docker baseline maintenance. Acceptance for the shipped iso is the manual real-10.9 boot-test.
-  # Gated the same way build-macos's "publish" decision is (tag, or workflow_dispatch local_release=
-  # true) -- duplicated as a raw expression rather than a `needs: [build-macos]` edge, so this job
-  # keeps running in parallel with build-macos instead of waiting on it.
+  # boot2docker.iso on native Linux/Docker (macos-26 can't build it). We only BUILD the iso here for the
+  # .pkg; the source is digest-verified at clone time (clone_pinned.sh in the boot2docker DOWNLOAD_COMMAND
+  # bails unless the checkout is the pinned commit). boot2docker.yml is the CI gate on bump PRs; runtime
+  # issues in a shipped iso are fixed in a -mavericks.2 repackage. Gated the same way build-macos's
+  # "publish" decision is (tag, or workflow_dispatch local_release=true) -- duplicated as a raw expression
+  # rather than a `needs: [build-macos]` edge, so this job keeps running in parallel with build-macos.
   build-iso:
     if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.local_release == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # clone_pinned.sh lives in shared-cmake; the iso build resolves it via find_package.
+      - name: Install mavericks-shared-cmake
+        uses: ModernMavericks/shared-cmake/.github/actions/install@v1
       - name: Build the boot2docker iso (same cmake iso build the box runs)
         run: |
           cmake --preset iso

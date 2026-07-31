@@ -10,12 +10,11 @@ repackage of the same date-stamped product.
 
 | Ingredient | Pinned in | Renovate | On a bump |
 |---|---|---|---|
-| docker CLI | `components/docker-cli/version` (`REPO=` + `REF=`) | ✅ `github-tags` | watched path → repackage dispatched → `-mavericks.(N+1)` |
-| docker Compose | `components/docker-compose/version` | ✅ `github-tags` | same |
-| docker Machine | `components/docker-machine/version` | ✅ `github-tags` | same |
-| lazydocker | `components/lazydocker/version` | ✅ `github-tags` | same |
-| boot2docker source | `components/boot2docker/version` | ✅ `github-tags` | same, and re-runs the iso gates |
-| boot2docker iso fingerprint | `components/boot2docker/golden.sha256` | n/a (a baseline, not a version) | a stale golden fails the fingerprint gate until re-baselined |
+| docker CLI | `components/docker-cli/version` (`REPO=` + `REF=` + `DIGEST=`) | ✅ `git-refs` + `currentDigest` | watched path → repackage dispatched → `-mavericks.(N+1)` |
+| docker Compose | `components/docker-compose/version` | ✅ `git-refs` + `currentDigest` | same |
+| docker Machine | `components/docker-machine/version` | ✅ `git-refs` + `currentDigest` | same |
+| lazydocker | `components/lazydocker/version` | ✅ `git-refs` + `currentDigest` | same |
+| boot2docker source | `components/boot2docker/version` | ✅ `git-refs` + `currentDigest` | same; the iso build re-clones (commit-digest-verified) + rebuilds |
 | boot2docker patch overlay | `components/boot2docker/patches/*.patch` | n/a (this repo's own fix) | **is** an ingredient — it is applied into the iso, so a change rebuilds it |
 | ModernMavericks Go cross toolchain | `components/golang/version` | ✅ `github-releases` on `ModernMavericks/golang` | watched path → repackage rebuilt on the new Go |
 | MacOSX10.9 SDK, Sparkle framework | `ModernMavericks/shared-cmake@v1` | ✅ github-actions manager tracks the tag | `@v1` is a *moving* tag: content changes without the pin changing, so nothing auto-repackages |
