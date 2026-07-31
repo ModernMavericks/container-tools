@@ -35,7 +35,7 @@
   NSImage *icon = [self iconForState:state];
   icon.template = YES;
   [self.statusItem setImage:icon];
-  [self.statusItem setToolTip:[@"Docker: " stringByAppendingString:state]];
+  [self.statusItem setToolTip:[self humanState:state]];
   if (self.watchers)
     [self.watchers watchVmxPid:([state isEqualToString:@"running"] ? [self.controller vmxPid] : 0)];
   [self rebuildMenuForState:state];
@@ -54,6 +54,14 @@
 }
 
 - (NSString *)humanState:(NSString *)s {
+  if ([s hasPrefix:@"working:"]) {
+    NSString *op = [s substringFromIndex:[@"working:" length]];
+    if ([op isEqualToString:@"image-upgrade"]) return @"Updating VM image…";
+    if ([op isEqualToString:@"start"])         return @"Starting Docker…";
+    if ([op isEqualToString:@"stop"])          return @"Stopping Docker…";
+    if ([op isEqualToString:@"restart"])       return @"Restarting Docker…";
+    return @"Working…";
+  }
   if ([s isEqualToString:@"running"])   return @"Docker: Running";
   if ([s isEqualToString:@"stopped"])   return @"Docker: Stopped";
   if ([s isEqualToString:@"creating"])  return @"Docker: Starting…";
@@ -74,7 +82,7 @@
     f.enabled = NO;
   } else if ([state isEqualToString:@"absent"] || [state isEqualToString:@"error"]) {
     [m addItemWithTitle:@"Set Up / Repair…" action:@selector(doSetup:) keyEquivalent:@""];
-  } else if (![state isEqualToString:@"creating"]) {
+  } else if (![state isEqualToString:@"creating"] && ![state hasPrefix:@"working"]) {
     if ([state isEqualToString:@"running"]) {
       [m addItemWithTitle:@"Stop Docker" action:@selector(doStop:) keyEquivalent:@""];
       [m addItemWithTitle:@"Restart Docker" action:@selector(doRestart:) keyEquivalent:@""];
@@ -149,7 +157,7 @@
 
 - (NSImage *)iconForState:(NSString *)state {
   BOOL running   = [state isEqualToString:@"running"];
-  BOOL working   = [state isEqualToString:@"working"] || [state isEqualToString:@"creating"];
+  BOOL working   = [state hasPrefix:@"working"] || [state isEqualToString:@"creating"];
   BOOL attention = [state isEqualToString:@"no-fusion"] ||
                    [state isEqualToString:@"absent"]    ||
                    [state isEqualToString:@"error"];
