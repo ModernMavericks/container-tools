@@ -334,6 +334,11 @@ jobs:
         run: |
           sh "$MSC_SCRIPTS/artifact-facts.sh" dist "$VER" \
             | sh "$MSC_SCRIPTS/check-artifact-conformance.sh"
+          # Behavior gate: a client on the previous release must actually SEE this as an upgrade -- a
+          # numeric sparkle:version that orders strictly after the last published one. The conformance
+          # check above verifies artifacts AGREE; it never exercised update ordering, which is the gap
+          # the "-mavericks.N compares EQUAL -> you're up to date" bug shipped straight through.
+          sh "$MSC_SCRIPTS/assert_appcast_upgradeable.sh" --appcast dist/appcast.xml --version "$VER"
 
       - uses: actions/upload-artifact@v7
         with:
