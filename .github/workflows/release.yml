@@ -280,7 +280,10 @@ jobs:
           mkdir -p dist
           # Both halves' build records travel with the release: conformance compares them, and anyone
           # can see which commit each half came from.
-          for f in dl/build-info-macos.txt iso/build-info-iso.txt; do [ -f "$f" ] && cp "$f" dist/ || true; done
+          # Unconditional: both jobs always write one, so a missing record means a half did not run
+          # the way we think it did. Tolerating that silently is how conformance ends up reporting
+          # "ok" for a comparison it never made.
+          cp dl/build-info-macos.txt iso/build-info-iso.txt dist/
           cp "$NOTES" dist/RELEASE_NOTES.md   # becomes the Release body; not attached as an asset
           echo "=== $NOTES ==="; cat "$NOTES"
 
@@ -338,6 +341,7 @@ jobs:
             dist/*.pkg
             dist/appcast.xml
             dist/RELEASE_NOTES.md
+            dist/build-info-*.txt
 
   # All-or-nothing publish: the ONLY writer to Releases, gated on package. The shared workflow owns
   # the mechanics -- it regenerates SHA256SUMS, uses RELEASE_NOTES.md from the artifact as the body
