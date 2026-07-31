@@ -49,7 +49,8 @@ done
 for f in "$DOCKER" "$COMPOSE" "$MACHINE" "$LAZY" "$ISO" "$DOCKED" "$SYNC" "$BOOT" "$COMMON" "$CTL" "$MIGRATE" "$LAUNCHAGENT"; do [ -f "$f" ] || { echo "package_pkg: missing input: $f" >&2; exit 1; }; done
 [ -d "$UPD_APP" ] || { echo "package_pkg: no updater .app: $UPD_APP" >&2; exit 1; }
 [ -d "$MENUBAR" ] || { echo "package_pkg: no menubar .app: $MENUBAR" >&2; exit 1; }
-for h in stage_updater.sh set_install_floor.sh build_component_pkg.sh assert_pkg_installs_in_place.sh; do
+for h in stage_updater.sh set_install_floor.sh build_component_pkg.sh assert_pkg_installs_in_place.sh \
+         postinstall-stop-gui.sh assert_gui_relaunch_safe.sh; do
   [ -f "$MSC/$h" ] || { echo "package_pkg: shared helper missing: $MSC/$h" >&2; exit 1; }
 done
 
@@ -102,12 +103,12 @@ cat >> "$scripts/postinstall" <<'POST'
 # which re-registers the Login Item at the new path.
 _uid=$(stat -f %u /dev/console 2>/dev/null)
 if [ -n "$_uid" ] && [ "${_uid:-0}" -gt 0 ]; then
-  # Match the executable name (unchanged across the rename), NOT the .app path, so this also stops a
-  # menu-bar app still running from the old bundle. Graceful TERM, then a guaranteed KILL.
-  MENU_EXE='Contents/MacOS/DockerMenu'
-  pkill -TERM -U "$_uid" -f "$MENU_EXE" 2>/dev/null || true
-  sleep 1
-  pkill -KILL -U "$_uid" -f "$MENU_EXE" 2>/dev/null || true
+  # Stop any old menu-bar instance before the launch below, or the two coexist and the user sees two
+  # icons. Shared helper (postinstall-stop-gui.sh, staged beside this script as stop-gui.sh); it matches
+  # the Contents/MacOS exec name -- unchanged across the rename -- so it also stops an app still running
+  # from the old bundle.
+  . "$(dirname "$0")/stop-gui.sh"
+  mav_stop_gui_instance 'Contents/MacOS/DockerMenu' "$_uid"
   # One-time cleanup of the pre-rename bundle, but ONLY if it is ours (identity-checked, so we never
   # delete an unrelated /Applications/Container Tools for Mavericks.app) AND only once the new bundle
   # is actually in place. The [ -d "$NEW_APP" ] guard is the safety belt: if bundle relocation ever
@@ -126,6 +127,15 @@ fi
 exit 0
 POST
 chmod +x "$scripts/postinstall"
+
+# Stage the shared stop-the-old-menu-bar-instance helper the postinstall sources (present at install
+# time on the target; a build-host script is not). Then gate the assembled postinstall -- a GUI-app
+# relaunch must be preceded by a stop -- and confirm the staged helper parses + defines the function.
+install -m 0644 "$MSC/postinstall-stop-gui.sh" "$scripts/stop-gui.sh"
+sh "$MSC/assert_gui_relaunch_safe.sh" "$scripts/postinstall" >&2
+sh -n "$scripts/postinstall" || { echo "package_pkg: assembled postinstall has a syntax error" >&2; exit 1; }
+sh -c '. "$1"; command -v mav_stop_gui_instance >/dev/null' _ "$scripts/stop-gui.sh" \
+  || { echo "package_pkg: staged stop-gui.sh does not define mav_stop_gui_instance" >&2; exit 1; }
 
 # --- flat component pkg over the whole payload, with the agent-loading postinstall ---
 # Strip AppleDouble sidecars copied in from the (NFS) source tree. NOTE: macOS 26 stamps an
