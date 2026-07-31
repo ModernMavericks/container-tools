@@ -54,6 +54,9 @@
 }
 
 - (NSString *)humanState:(NSString *)s {
+  // In-progress states read as verb phrases ("Stopping Docker…"), deliberately dropping the
+  // "Docker: " status-label prefix the steady states use ("Docker: Stopped") — the action, not
+  // the status, is what's current. Keep the two shapes distinct on purpose.
   if ([s hasPrefix:@"working:"]) {
     NSString *op = [s substringFromIndex:[@"working:" length]];
     if ([op isEqualToString:@"image-upgrade"]) return @"Updating VM image…";

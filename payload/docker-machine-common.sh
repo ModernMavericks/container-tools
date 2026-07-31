@@ -79,10 +79,11 @@ op_in_progress() {
 op_name() { cat "$OP_LOCK/name" 2>/dev/null || echo working; }
 
 op_begin() { # name  — announce a long op: create the lock and mark the state working:<name>
+  _op=${1:-working}   # tolerate a zero-arg call under the callers' `set -u`
   mkdir -p "$STATE_DIR" 2>/dev/null || true
   mkdir "$OP_LOCK" 2>/dev/null || true
-  printf '%s\n' "$1" > "$OP_LOCK/name" 2>/dev/null || true
-  write_state "working:$1"
+  printf '%s\n' "$_op" > "$OP_LOCK/name" 2>/dev/null || true
+  write_state "working:$_op"
 }
 
 op_end() { # release the lock and settle the state to the real machine status
