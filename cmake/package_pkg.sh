@@ -94,10 +94,31 @@ sh "$MSC/stage_updater.sh" --stage "$stage" --app "$UPD_APP" --app-dir "$UPD_APP
 [ -f "$scripts/postinstall" ] || printf '#!/bin/sh\n' > "$scripts/postinstall"
 sed -i '' -e '${/^[[:space:]]*exit 0[[:space:]]*$/d;}' "$scripts/postinstall"
 cat >> "$scripts/postinstall" <<'POST'
-# Launch the menu-bar app once, as the console user, so it registers its Login Item
-# and appears immediately (installer runs as root).
+# Converge on the renamed bundle. The .pkg lays down "/Applications/Mavericks Container Tools.app",
+# but installing over a pre-rename box leaves the old "/Applications/Container Tools for Mavericks.app"
+# behind -- still the running menu-bar process and still the registered Login Item (MDLoginItem keys
+# on the bundle URL) -- so the user keeps seeing the old name. Stop the old process and remove its
+# bundle (identity-checked, so an unrelated app is never touched) before (re)launching the new one,
+# which re-registers the Login Item at the new path.
 _uid=$(stat -f %u /dev/console 2>/dev/null)
-[ -n "$_uid" ] && launchctl asuser "$_uid" open -a "/Applications/Mavericks Container Tools.app" >/dev/null 2>&1 || true
+if [ -n "$_uid" ] && [ "${_uid:-0}" -gt 0 ]; then
+  # Match the executable name (unchanged across the rename), NOT the .app path, so this also stops a
+  # menu-bar app still running from the old bundle. Graceful TERM, then a guaranteed KILL.
+  MENU_EXE='Contents/MacOS/DockerMenu'
+  pkill -TERM -U "$_uid" -f "$MENU_EXE" 2>/dev/null || true
+  sleep 1
+  pkill -KILL -U "$_uid" -f "$MENU_EXE" 2>/dev/null || true
+  # One-time cleanup of the pre-rename bundle, but ONLY if it is ours (identity-checked, so we never
+  # delete an unrelated /Applications/Container Tools for Mavericks.app).
+  OLD_APP="/Applications/Container Tools for Mavericks.app"
+  if [ -d "$OLD_APP" ] && \
+     [ "$(defaults read "$OLD_APP/Contents/Info" CFBundleIdentifier 2>/dev/null)" = "dev.modernmavericks.DockerMenu" ]; then
+    rm -rf "$OLD_APP"
+  fi
+  # Launch the (new) menu-bar app as the console user so it registers its Login Item and appears
+  # immediately (installer runs as root).
+  launchctl asuser "$_uid" open -a "/Applications/Mavericks Container Tools.app" >/dev/null 2>&1 || true
+fi
 exit 0
 POST
 chmod +x "$scripts/postinstall"
