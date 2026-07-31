@@ -183,7 +183,8 @@ jobs:
             docker_cli="$(sed -n 's/^REF=//p' components/docker-cli/version)" \
             docker_compose="$(sed -n 's/^REF=//p' components/docker-compose/version)" \
             docker_machine="$(sed -n 's/^REF=//p' components/docker-machine/version)" \
-            lazydocker="$(cat components/lazydocker/version)" \
+            lazydocker="$(sed -n 's/^REF=//p' components/lazydocker/version)" \
+            lazydocker_digest="$(sed -n 's/^DIGEST=//p' components/lazydocker/version)" \
             golang_toolchain="$(cat components/golang/version)"
       - name: Upload packaging inputs (publishing runs only)
         if: steps.ver.outputs.publish == 'true'
