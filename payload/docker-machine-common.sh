@@ -94,6 +94,7 @@ op_end() { # release the lock and settle the state to the real machine status
 status_word() {
   fusion_present || { echo no-fusion; return; }
   create_in_progress && { echo creating; return; }
+  op_in_progress && { echo "working:$(op_name)"; return; }
   case "$(machine_status)" in
     Running) echo running ;;
     Stopped) echo stopped ;;

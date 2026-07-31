@@ -104,10 +104,24 @@ case_op_lock() {
   teardown
 }
 
+# status_word must surface a fresh op.lock as working:<op>, after the create_in_progress check,
+# and must reclaim a stale (>600s) op.lock rather than report it as working.
+case_op_lock_status() {
+  setup; stub_dm Running
+  ( . "$COMMON"; op_begin image-upgrade )
+  ( . "$COMMON"; [ "$(status_word)" = "working:image-upgrade" ] ) \
+    || fail "status_word must report working:<op> while the lock is fresh"
+  touch -t 200001010000 "$MAVERICKS_DOCKER_STATE_DIR/op.lock"
+  ( . "$COMMON"; [ "$(status_word)" = running ] ) \
+    || fail "a stale op.lock must be reclaimed, not reported as working"
+  teardown
+}
+
 case_status_word
 case_creating
 case_write_state
 case_bindir_on_path
 case_image_status
 case_op_lock
+case_op_lock_status
 echo "docker_common_test: OK"
