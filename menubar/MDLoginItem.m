@@ -23,15 +23,6 @@
   return found; // +1 retained (or NULL); CALLER MUST CFRelease
 }
 
-+ (BOOL)isEnabled {
-  LSSharedFileListRef list = LSSharedFileListCreate(NULL, kLSSharedFileListSessionLoginItems, NULL);
-  LSSharedFileListItemRef found = [self findItemInList:list];
-  BOOL on = (found != NULL);
-  if (found) CFRelease(found);
-  if (list) CFRelease(list);
-  return on;
-}
-
 + (void)setEnabled:(BOOL)enabled {
   LSSharedFileListRef list = LSSharedFileListCreate(NULL, kLSSharedFileListSessionLoginItems, NULL);
   if (!list) return;

@@ -1,8 +1,9 @@
 #import <Foundation/Foundation.h>
 
-// The app's own "Open at Login" via LSSharedFileList (the idiomatic 10.9 mechanism;
-// user-manageable in System Preferences). +bundleURL is this .app.
+// Seeds the app's own login item via LSSharedFileList (the idiomatic 10.9 mechanism;
+// user-manageable in System Preferences → Users & Groups → Login Items). The app enrolls
+// itself once on first launch so the status-bar control reappears after login; there is no
+// in-app toggle (that's the OS's job). +appURL is this .app.
 @interface MDLoginItem : NSObject
-+ (BOOL)isEnabled;
 + (void)setEnabled:(BOOL)enabled;
 @end

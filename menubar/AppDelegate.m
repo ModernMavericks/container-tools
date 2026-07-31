@@ -95,9 +95,9 @@
   NSMenuItem *vmLogin = [m addItemWithTitle:@"Start Docker at Login"
                                      action:@selector(toggleVMLogin:) keyEquivalent:@""];
   vmLogin.state = self.vmLoginOn ? NSOnState : NSOffState;
-  NSMenuItem *appLogin = [m addItemWithTitle:@"Open at Login"
-                                      action:@selector(toggleAppLogin:) keyEquivalent:@""];
-  appLogin.state = [MDLoginItem isEnabled] ? NSOnState : NSOffState;
+  // No "Open at Login" toggle for the menu-bar app itself: it's redundant with the OS Login Items
+  // pane (same LSSharedFileList the app self-seeds on first launch), and "Open" reads as nonsense
+  // for a windowless status-bar app. Users manage the app's own login item in System Preferences.
 
   [m addItem:[NSMenuItem separatorItem]];
   [m addItemWithTitle:@"Quit Container Tools for Mavericks" action:@selector(terminate:) keyEquivalent:@""];
@@ -145,10 +145,6 @@
 - (void)toggleVMLogin:(id)s {
   BOOL on = self.vmLoginOn;
   [self.controller runVerb:(on ? @"login-off" : @"login-on") completion:^(NSString *o, int c) { [self refresh]; }];
-}
-- (void)toggleAppLogin:(id)s {
-  [MDLoginItem setEnabled:![MDLoginItem isEnabled]];
-  [self rebuildMenuForState:[self.controller currentState]];
 }
 
 - (NSImage *)iconForState:(NSString *)state {
