@@ -218,12 +218,15 @@ jobs:
             boot2docker="$(sed -n 's/^REF=//p' components/boot2docker/version)" \
             boot2docker_golden="$(cut -d' ' -f1 components/boot2docker/golden.sha256 2>/dev/null || echo none)" \
             iso_sha256="$(shasum -a 256 build-iso/boot2docker/boot2docker.iso | cut -d' ' -f1)"
+          # Put the record BESIDE the iso and upload that one directory. Listing two paths with
+          # different roots makes upload-artifact root the archive at their least common ancestor, so
+          # the iso would arrive at iso/build-iso/boot2docker/boot2docker.iso and package_pkg would
+          # not find it -- which is exactly what happened.
+          mv build-info-iso.txt build-iso/boot2docker/
       - uses: actions/upload-artifact@v7
         with:
           name: boot2docker-iso
-          path: |
-            build-iso/boot2docker/boot2docker.iso
-            build-info-iso.txt
+          path: build-iso/boot2docker/*
 
   # Assemble + sign the product .pkg and render the signed appcast. Needs the mac binaries/updater and
   # the iso; runs on macos-26 for pkgbuild/productbuild.
