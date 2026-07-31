@@ -1,12 +1,25 @@
 cmake_minimum_required(VERSION 3.15)
 
-# Single source of truth for the product version (feeds .pkg name + release tag later). NOT passed to
-# project(VERSION ...): the mavericks scheme (e.g. 29.6.2-mavericks.1) is not a valid CMake version, and
-# nothing here needs PROJECT_VERSION -- MAVERICKS_DOCKER_VERSION carries it. (Mirrors mavericks-swift/golang.)
-file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" MAVERICKS_DOCKER_VERSION LIMIT_COUNT 1)
-project(mavericks_docker LANGUAGES NONE)
 # LANGUAGES NONE: nothing is compiled natively. The real 10.9/x86_64 enforcement is
 # the go build flags below + the compat_guard gate, NOT CMake's compiler vars.
+project(mavericks_docker LANGUAGES NONE)
+
+# shared-cmake is needed in BOTH modes: the build-artifact gate scripts (compat_guard, sdk_coverage) for
+# the Go builds, AND clone_pinned.sh -- the digest-verified git fetch used for every pinned source,
+# including the iso's boot2docker clone. (The 10.9 SDK, target flags, and legacy shim come from the go126
+# toolchain's CC wrapper; sdk_coverage fetches its own reference SDK via --fetch-script.)
+# Found up here rather than further down because the version resolution below needs it.
+find_package(MavericksSharedCMake REQUIRED)
+
+# The product version (feeds the .pkg name + the release tag). NOT passed to project(VERSION ...): the
+# mavericks scheme (20260727-mavericks.15) is not a valid CMake version, and nothing here needs
+# PROJECT_VERSION -- MAVERICKS_DOCKER_VERSION carries it.
+#
+# Derived, never committed: UPSTREAM_VERSION plus the shipped tags decide it, and VERSION is written as
+# a build product. The committed VERSION this replaces had drifted to 20260727-mavericks.2 while
+# releases were at .14 -- which also made the tag path (it asserted tag == VERSION) unsatisfiable.
+mavericks_resolve_version(MAVERICKS_DOCKER_VERSION)
+
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.9)
 set(CMAKE_OSX_ARCHITECTURES x86_64)
 
@@ -51,11 +64,6 @@ if(NOT MAVERICKS_DOCKER_EXPECTED_MODE STREQUAL MAVERICKS_DOCKER_MODE)
     "does a '${MAVERICKS_DOCKER_MODE}' build — wrong preset for this host.")
 endif()
 
-# shared-cmake is needed in BOTH modes: the build-artifact gate scripts (compat_guard, sdk_coverage) for
-# the Go builds, AND clone_pinned.sh -- the digest-verified git fetch used for every pinned source,
-# including the iso's boot2docker clone. (The 10.9 SDK, target flags, and legacy shim come from the go126
-# toolchain's CC wrapper; sdk_coverage fetches its own reference SDK via --fetch-script.)
-find_package(MavericksSharedCMake REQUIRED)
 
 if(NOT MAVERICKS_DOCKER_MODE STREQUAL "iso")
   # The Go compiler: go126-cross on PATH (cross) or the mavericks-golang native go126 .pkg (native). Both

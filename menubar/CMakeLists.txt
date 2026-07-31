@@ -8,7 +8,8 @@ find_package(MavericksSharedCMake REQUIRED)
 set(MAVERICKS_REQUIRE_LANGS OBJC)
 include(Mavericks)   # AppleClang gate + build conventions
 
-file(STRINGS "${CMAKE_SOURCE_DIR}/../VERSION" MAVERICKS_DOCKER_VERSION LIMIT_COUNT 1)
+# Version from the repo root (this project's source dir is menubar/), derived not committed.
+mavericks_resolve_version(MAVERICKS_DOCKER_VERSION ROOT "${CMAKE_SOURCE_DIR}/..")
 
 # App icon: the product's shipping-container art (deliberately NOT a whale — see
 # updater/ICON-CREDIT.txt), single-sourced from updater/ where the .icns is generated

@@ -64,39 +64,30 @@ jobs:
           SCR="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
           sh "$SCR/check-ingredient-pins.sh"
 
-      # Three ways in here decide two things: what VER is, and whether this run publishes.
-      #   - a *-mavericks.* tag: VER = the tag (must match the committed VERSION file); publish=yes.
-      #   - workflow_dispatch(local_release=true): VER = <same date>-mavericks.(N+1) where N is the
-      #     highest EXISTING tag for this date — derived from tags, not from the VERSION file, because a
-      #     dispatch-cut version is never committed back: reading the file would recompute the same N+1
-      #     on the next ingredient bump and OVERWRITE that release instead of cutting the next one.
-      #     publish=yes. Written to the local VERSION file (NOT committed) so this job's own cmake
-      #     configure (MAVERICKS_DOCKER_VERSION, the updater's bundle version) embeds the repackage's
-      #     real version, not the stale on-disk one.
-      #   - anything else (push to main / PR): VER = the committed VERSION file, unchanged; publish=no.
+      # Three ways in here decide two things: what VER is, and whether this run publishes. The
+      # arithmetic is NOT here: resolve-version.sh (shared) derives <upstream>-mavericks.N from the
+      # committed UPSTREAM_VERSION plus the shipped tags, and writes VERSION as a build product so this
+      # job's cmake configure and the updater bundle embed the same string.
+      #   - a *-mavericks.* tag: VER = the tag; publish=yes. (No "tag must equal the committed VERSION"
+      #     check any more -- there is no committed VERSION. That check was unsatisfiable: the file said
+      #     .2 while releases were at .14, so a tag build could not have passed it.)
+      #   - workflow_dispatch(local_release=true): a repackage -- VER = <upstream>-mavericks.(N+1) from
+      #     the tags; publish=yes. Derived from tags, never from a file: a dispatch-cut version is not
+      #     committed back, so reading a file would recompute the same N+1 on the next ingredient bump
+      #     and OVERWRITE that release instead of cutting the next one.
+      #   - anything else (push to main / PR): the shipped N; publish=no.
       - name: Decide version + whether this run publishes
         id: ver
         run: |
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
             VER="${GITHUB_REF_NAME}"
-            FILEVER=$(cat VERSION)
-            if [ "$VER" != "$FILEVER" ]; then
-              echo "::error::tag $VER != VERSION file $FILEVER"; exit 1; fi
+            printf '%s\n' "$VER" > VERSION
             PUBLISH=true
           elif [ "${GITHUB_EVENT_NAME}" = workflow_dispatch ] && [ "${{ github.event.inputs.local_release }}" = "true" ]; then
-            CUR=$(cat VERSION)
-            UP="${CUR%%-mavericks.*}"; N="${CUR##*-mavericks.}"
-            case "$N" in ''|*[!0-9]*) echo "::error::unexpected VERSION '$CUR'"; exit 1;; esac
-            for t in $(git tag --list "${UP}-mavericks.*"); do
-              n="${t##*-mavericks.}"
-              case "$n" in ''|*[!0-9]*) continue;; esac
-              [ "$n" -gt "$N" ] && N="$n"
-            done
-            VER="${UP}-mavericks.$((N + 1))"
+            VER="$(sh "$MSC_SCRIPTS/resolve-version.sh" local)"
             PUBLISH=true
-            printf '%s\n' "$VER" > VERSION
           else
-            VER=$(cat VERSION)
+            VER="$(sh "$MSC_SCRIPTS/resolve-version.sh")"
             PUBLISH=false
           fi
           echo "version=$VER" >> "$GITHUB_OUTPUT"
@@ -208,6 +199,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # cmake resolves the version from the tags now, in this job too
       # clone_pinned.sh lives in shared-cmake; the iso build resolves it via find_package.
       - name: Install mavericks-shared-cmake
         uses: ModernMavericks/shared-cmake/.github/actions/install@v1
