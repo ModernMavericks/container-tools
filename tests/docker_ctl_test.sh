@@ -175,16 +175,55 @@ case_image() {
   printf '{ "Boot2DockerURL": "/Volumes/Docker for Mavericks/boot2docker.iso" }\n' \
     > "$MAVERICKS_DOCKER_MACHDIR/container-tools/config.json"
   [ "$(sh "$CTL" image-status)" = stale ] || fail "image-status must report stale when the VM iso differs"
-  sh "$CTL" image-upgrade >/dev/null || fail "image-upgrade exit 0"
+  sh "$CTL" image-upgrade >/dev/null || fail "image-upgrade exit 0 on success"
   grep -q "\"Boot2DockerURL\": \"$MAVERICKS_DOCKER_ISO\"" "$MAVERICKS_DOCKER_MACHDIR/container-tools/config.json" \
     || fail "image-upgrade must repoint Boot2DockerURL to the installed ISO before upgrading"
   grep -q '^upgrade container-tools' "$DM_LOG" || fail "image-upgrade must call docker-machine upgrade"
+  grep -q '^start container-tools' "$DM_LOG" || fail "image-upgrade must start the VM after upgrading"
+  [ -d "$MAVERICKS_DOCKER_STATE_DIR/op.lock" ] && fail "image-upgrade must release op.lock"
+  [ "$(cat "$MAVERICKS_DOCKER_STATE_DIR/state")" = running ] || fail "image-upgrade must settle state to running"
+  teardown
+}
+
+# A failing `docker-machine upgrade` must (1) make the verb exit non-zero so the app can notify
+# failure, and (2) still start the VM so the user is not left with a down machine.
+case_image_upgrade_fails() {
+  setup
+  export MAVERICKS_DOCKER_MACHDIR="$WORK/machines"; mkdir -p "$MAVERICKS_DOCKER_MACHDIR/container-tools"
+  export MAVERICKS_DOCKER_ISO="$WORK/installed.iso"; printf 'NEW\n' > "$MAVERICKS_DOCKER_ISO"
+  printf 'OLD\n' > "$MAVERICKS_DOCKER_MACHDIR/container-tools/boot2docker.iso"
+  printf '{ "Boot2DockerURL": "/x" }\n' > "$MAVERICKS_DOCKER_MACHDIR/container-tools/config.json"
+  cat > "$BIN/docker-machine" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DM_LOG"
+case "\$1" in
+  status)  echo Running ;;
+  upgrade) exit 3 ;;
+  *)       exit 0 ;;
+esac
+EOF
+  chmod +x "$BIN/docker-machine"
+  sh "$CTL" image-upgrade >/dev/null && fail "image-upgrade must exit non-zero when upgrade fails"
+  grep -q '^start container-tools' "$DM_LOG" || fail "a failed upgrade must still start the VM"
+  [ -d "$MAVERICKS_DOCKER_STATE_DIR/op.lock" ] && fail "op.lock must be released even on failure"
+  teardown
+}
+
+# A ctl verb announces working:<op> while it runs; verified here via op_end's cleanup (lock gone,
+# state settled). The mid-run working marker itself is exercised in docker_common_test.
+case_start_announces() {
+  setup; stub_dm Running
+  sh "$CTL" start >/dev/null || fail "start exit 0"
+  [ -d "$MAVERICKS_DOCKER_STATE_DIR/op.lock" ] && fail "start must release op.lock when done"
+  [ "$(cat "$MAVERICKS_DOCKER_STATE_DIR/state")" = running ] || fail "start must settle state to running"
   teardown
 }
 
 case_status
 case_start_stop
 case_image
+case_image_upgrade_fails
+case_start_announces
 case_start_syncs_context
 case_status_stays_fast
 case_login

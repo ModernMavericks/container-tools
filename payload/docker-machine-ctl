@@ -16,17 +16,21 @@ _run_and_announce() { # docker-machine subcommand
 
 case "${1:-}" in
   status)  _w=$(status_word); write_state "$_w"; echo "$_w" ;;
-  start)   _run_and_announce start ;;
-  stop)    _run_and_announce stop ;;
-  restart) _run_and_announce restart ;;
+  start)   op_begin start;   _run_and_announce start;   _rc=$?; op_end; exit $_rc ;;
+  stop)    op_begin stop;    _run_and_announce stop;    _rc=$?; op_end; exit $_rc ;;
+  restart) op_begin restart; _run_and_announce restart; _rc=$?; op_end; exit $_rc ;;
   image-status) image_status ;;
   # Roll the VM onto the freshly-installed boot2docker.iso. Repoint first (a migrated host's stale
   # Boot2DockerURL would make `docker-machine upgrade` fail fetching the vanished DMG), then upgrade
   # (data disk preserved), then bring it up + heal the context. CLI-only; the menu drives this verb.
   image-upgrade)
+    op_begin image-upgrade
     repoint_iso_url
-    docker-machine upgrade "$MACHINE" >>"$LOG" 2>&1 || true
-    _run_and_announce start ;;
+    if docker-machine upgrade "$MACHINE" >>"$LOG" 2>&1; then _rc=0; else _rc=$?; fi
+    docker-machine start "$MACHINE" >>"$LOG" 2>&1 || true   # always bring the VM back up
+    [ "$(machine_status)" = Running ] && sync_context
+    op_end
+    exit $_rc ;;
   login-status) launchctl list "$AGENT_LABEL" >/dev/null 2>&1 && echo on || echo off ;;
   login-on)  launchctl load -w "$AGENT_PLIST" >>"$LOG" 2>&1 ;;
   login-off) launchctl unload -w "$AGENT_PLIST" >>"$LOG" 2>&1 ;;
