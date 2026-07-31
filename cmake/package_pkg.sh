@@ -109,9 +109,13 @@ if [ -n "$_uid" ] && [ "${_uid:-0}" -gt 0 ]; then
   sleep 1
   pkill -KILL -U "$_uid" -f "$MENU_EXE" 2>/dev/null || true
   # One-time cleanup of the pre-rename bundle, but ONLY if it is ours (identity-checked, so we never
-  # delete an unrelated /Applications/Container Tools for Mavericks.app).
+  # delete an unrelated /Applications/Container Tools for Mavericks.app) AND only once the new bundle
+  # is actually in place. The [ -d "$NEW_APP" ] guard is the safety belt: if bundle relocation ever
+  # writes the payload back onto OLD_APP (leaving NEW_APP absent), removing OLD_APP would delete the
+  # app we just installed -- the exact failure that emptied /Applications on the .12 install.
+  NEW_APP="/Applications/Mavericks Container Tools.app"
   OLD_APP="/Applications/Container Tools for Mavericks.app"
-  if [ -d "$OLD_APP" ] && \
+  if [ -d "$NEW_APP" ] && [ "$OLD_APP" != "$NEW_APP" ] && [ -d "$OLD_APP" ] && \
      [ "$(defaults read "$OLD_APP/Contents/Info" CFBundleIdentifier 2>/dev/null)" = "dev.modernmavericks.DockerMenu" ]; then
     rm -rf "$OLD_APP"
   fi
@@ -129,7 +133,20 @@ chmod +x "$scripts/postinstall"
 # entry -- unavoidable, and identical to golang/swift's shipped pkgs. Those merge back into inert
 # xattrs when Installer extracts onto the 10.9 box's HFS+, so no ._ FILES land on the target.
 find "$stage" -name '._*' -delete 2>/dev/null || true
-pkgbuild --root "$stage" --identifier "$IDENT" --version "$VER" \
+# Disable bundle relocation. Otherwise PackageKit sees the menu-bar app's CFBundleIdentifier already
+# registered at a DIFFERENT path (e.g. a pre-rename "/Applications/Container Tools for Mavericks.app")
+# and RELOCATES the payload back onto it -- "Mavericks Container Tools.app relocated to Container Tools
+# for Mavericks.app" in install.log -- so the declared install path is silently ignored and the rename
+# never lands. A component plist with BundleIsRelocatable=false on every bundle forces each to install
+# at its RootRelativeBundlePath. --analyze lists one dict per bundle; flip them all.
+cplist="$WORK/component.plist"
+pkgbuild --analyze --root "$stage" "$cplist" >&2
+_i=0
+while /usr/libexec/PlistBuddy -c "Print :${_i}:BundleIsRelocatable" "$cplist" >/dev/null 2>&1; do
+  /usr/libexec/PlistBuddy -c "Set :${_i}:BundleIsRelocatable false" "$cplist" >&2
+  _i=$((_i + 1))
+done
+pkgbuild --root "$stage" --component-plist "$cplist" --identifier "$IDENT" --version "$VER" \
          --scripts "$scripts" --install-location / "$comp" >&2
 
 # --- product archive with the 10.9.5 OS floor (shared helper) ---
