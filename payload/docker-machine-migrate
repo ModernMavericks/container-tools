@@ -36,13 +36,17 @@ for f in "$d/$OLD".*; do
   mv "$f" "$d/$NEW.$ext"
 done
 
-# 3. Rewrite config.json: store path, machine name, and any $OLD.<ext> filename refs.
+# 3. Rewrite config.json: store path, machine name, any $OLD.<ext> filename refs, and Boot2DockerURL.
+# The Wowfunhappy 'default' points Boot2DockerURL at its DMG (/Volumes/Docker for Mavericks/...), which
+# is gone after unmount -- so `docker-machine upgrade` would fail fetching the ISO. Repoint it at our
+# installed image ($ISO) so upgrades use it.
 if [ -f "$d/config.json" ]; then
   sed -i '' \
     -e "s|machines/$OLD|machines/$NEW|g" \
     -e "s|$OLD\\.\\([A-Za-z][A-Za-z]*\\)|$NEW.\\1|g" \
     -e "s|\"MachineName\": \"$OLD\"|\"MachineName\": \"$NEW\"|g" \
     -e "s|\"Name\": \"$OLD\"|\"Name\": \"$NEW\"|g" \
+    -e "s|\"Boot2DockerURL\": *\"[^\"]*\"|\"Boot2DockerURL\": \"$ISO\"|" \
     "$d/config.json"
 fi
 

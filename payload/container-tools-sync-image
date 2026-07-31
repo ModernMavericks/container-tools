@@ -7,7 +7,7 @@
 # `docker-machine upgrade` it (data disk preserved). This finds hosts on an older image and offers that.
 set -eu
 
-INSTALLED=/usr/local/share/modernmavericks/container-tools/boot2docker.iso
+INSTALLED="${MAVERICKS_DOCKER_ISO:-/usr/local/share/modernmavericks/container-tools/boot2docker.iso}"
 [ -f "$INSTALLED" ] || exit 0
 command -v docker-machine >/dev/null 2>&1 || exit 0
 MACHDIR="$HOME/.docker/machine/machines"
@@ -36,6 +36,12 @@ btn=$(osascript -e "display dialog \"$MSG\" buttons {\"Later\", \"Upgrade\"} def
 
 # Do it in a visible Terminal per host so the user sees progress and any Fusion prompts.
 for name in $stale; do
+  # A Wowfunhappy-migrated host still points Boot2DockerURL at the old DMG (/Volumes/Docker for
+  # Mavericks/...), gone after unmount, so `docker-machine upgrade` fails fetching the ISO. Repoint it
+  # at the installed image first (no-op for hosts already on it). $name may be a compat symlink; sed
+  # follows it to the real config.json.
+  cfg="$MACHDIR/$name/config.json"
+  [ -f "$cfg" ] && sed -i '' "s|\"Boot2DockerURL\": *\"[^\"]*\"|\"Boot2DockerURL\": \"$INSTALLED\"|" "$cfg" 2>/dev/null || true
   osascript -e "tell application \"Terminal\" to do script \"docker-machine stop $name ; docker-machine upgrade $name && docker-machine start $name\"" >/dev/null 2>&1 || true
 done
 osascript -e 'tell application "Terminal" to activate' >/dev/null 2>&1 || true
