@@ -21,6 +21,7 @@ LOG=${MAVERICKS_DOCKER_LOG:-$HOME/Library/Logs/ModernMavericks/container-tools/b
 STATE_DIR=${MAVERICKS_DOCKER_STATE_DIR:-$HOME/Library/Application Support/ModernMavericks/container-tools}
 STATE_FILE="$STATE_DIR/state"
 LOCK="$STATE_DIR/creating.lock"
+OP_LOCK="$STATE_DIR/op.lock"   # generic in-progress marker for the ctl verbs (start/stop/restart/image-upgrade)
 PROFILES=${MAVERICKS_DOCKER_PROFILES:-$HOME/.bash_profile $HOME/.profile $HOME/.zshrc $HOME/.bashrc}
 AGENT_LABEL=dev.modernmavericks.container-tools-machine
 AGENT_PLIST=/Library/LaunchAgents/$AGENT_LABEL.plist
@@ -59,6 +60,34 @@ create_in_progress() {
     return 1
   fi
   return 0
+}
+
+# op.lock is the ctl verbs' in-progress marker, kept SEPARATE from creating.lock on purpose:
+# the create path's atomic-acquire + interactive/migrate flows depend on creating.lock, and
+# folding the two buys only conceptual unity. Mirrors create_in_progress's 600s stale-reclaim.
+op_in_progress() {
+  [ -d "$OP_LOCK" ] || return 1
+  _mt=$(stat -f %m "$OP_LOCK" 2>/dev/null) || return 0
+  if [ $(( $(date +%s) - _mt )) -gt 600 ]; then
+    log "stale op lock; reclaiming"
+    rm -rf "$OP_LOCK" 2>/dev/null || true
+    return 1
+  fi
+  return 0
+}
+
+op_name() { cat "$OP_LOCK/name" 2>/dev/null || echo working; }
+
+op_begin() { # name  — announce a long op: create the lock and mark the state working:<name>
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  mkdir "$OP_LOCK" 2>/dev/null || true
+  printf '%s\n' "$1" > "$OP_LOCK/name" 2>/dev/null || true
+  write_state "working:$1"
+}
+
+op_end() { # release the lock and settle the state to the real machine status
+  rm -rf "$OP_LOCK" 2>/dev/null || true
+  write_state "$(status_word)"
 }
 
 # The single word the state file / menu bar cares about.

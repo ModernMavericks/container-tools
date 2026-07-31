@@ -86,9 +86,28 @@ case_image_status() {
   teardown
 }
 
+# op.lock: a generic in-progress marker for the ctl verbs (start/stop/restart/image-upgrade).
+# op_begin writes working:<op> + creates the lock; op_end removes it and settles the state.
+# (status_word's working:<op> branch and stale-reclaim are covered in case_op_lock_status, Task 2.)
+case_op_lock() {
+  setup; stub_dm Running
+  ( . "$COMMON"; op_begin image-upgrade )
+  [ "$(cat "$MAVERICKS_DOCKER_STATE_DIR/state")" = "working:image-upgrade" ] \
+    || fail "op_begin must write working:<op> to the state file"
+  [ -d "$MAVERICKS_DOCKER_STATE_DIR/op.lock" ] || fail "op_begin must create op.lock"
+  [ "$(cat "$MAVERICKS_DOCKER_STATE_DIR/op.lock/name")" = image-upgrade ] \
+    || fail "op_begin must record the op name"
+  ( . "$COMMON"; op_end )
+  [ -d "$MAVERICKS_DOCKER_STATE_DIR/op.lock" ] && fail "op_end must remove op.lock"
+  [ "$(cat "$MAVERICKS_DOCKER_STATE_DIR/state")" = running ] \
+    || fail "op_end must write the real status back"
+  teardown
+}
+
 case_status_word
 case_creating
 case_write_state
 case_bindir_on_path
 case_image_status
+case_op_lock
 echo "docker_common_test: OK"
