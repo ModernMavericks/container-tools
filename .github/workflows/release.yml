@@ -175,12 +175,24 @@ jobs:
           cp -R build/menubar/DockerMenu.app stage/DockerMenu.app
           find stage -name '._*' -delete 2>/dev/null || true
           tar -C stage -czf packaging-inputs.tgz .
+          # Record what THIS job built from. The .pkg is assembled from two independent jobs -- these
+          # binaries and an iso built on Linux -- so the risk worth catching is them coming from
+          # different commits (a re-run, a stale artifact). Conformance compares the records.
+          sh "$MSC_SCRIPTS/build-info.sh" build-info-macos.txt \
+            variant=macos commit="$GITHUB_SHA" \
+            docker_cli="$(sed -n 's/^REF=//p' components/docker-cli/version)" \
+            docker_compose="$(sed -n 's/^REF=//p' components/docker-compose/version)" \
+            docker_machine="$(sed -n 's/^REF=//p' components/docker-machine/version)" \
+            lazydocker="$(cat components/lazydocker/version)" \
+            golang_toolchain="$(cat components/golang/version)"
       - name: Upload packaging inputs (publishing runs only)
         if: steps.ver.outputs.publish == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: packaging-inputs
-          path: packaging-inputs.tgz
+          path: |
+            packaging-inputs.tgz
+            build-info-macos.txt
 
   # boot2docker.iso on native Linux/Docker (macos-26 can't build it). We only BUILD the iso here for the
   # .pkg; the source is digest-verified at clone time (clone_pinned.sh in the boot2docker DOWNLOAD_COMMAND
@@ -200,10 +212,18 @@ jobs:
         run: |
           cmake --preset iso
           cmake --build --preset iso
+          # The other half of the record (see build-macos): same commit, plus the iso's own pins.
+          sh "$MSC_SCRIPTS/build-info.sh" build-info-iso.txt \
+            variant=iso commit="$GITHUB_SHA" \
+            boot2docker="$(sed -n 's/^REF=//p' components/boot2docker/version)" \
+            boot2docker_golden="$(cut -d' ' -f1 components/boot2docker/golden.sha256 2>/dev/null || echo none)" \
+            iso_sha256="$(shasum -a 256 build-iso/boot2docker/boot2docker.iso | cut -d' ' -f1)"
       - uses: actions/upload-artifact@v7
         with:
           name: boot2docker-iso
-          path: build-iso/boot2docker/boot2docker.iso
+          path: |
+            build-iso/boot2docker/boot2docker.iso
+            build-info-iso.txt
 
   # Assemble + sign the product .pkg and render the signed appcast. Needs the mac binaries/updater and
   # the iso; runs on macos-26 for pkgbuild/productbuild.
@@ -255,6 +275,9 @@ jobs:
             [ -z "$SECTION" ] || printf '\n%s\n' "$SECTION" >> "$NOTES"
           fi
           mkdir -p dist
+          # Both halves' build records travel with the release: conformance compares them, and anyone
+          # can see which commit each half came from.
+          for f in dl/build-info-macos.txt iso/build-info-iso.txt; do [ -f "$f" ] && cp "$f" dist/ || true; done
           cp "$NOTES" dist/RELEASE_NOTES.md   # becomes the Release body; not attached as an asset
           echo "=== $NOTES ==="; cat "$NOTES"
 
