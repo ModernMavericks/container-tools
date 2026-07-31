@@ -22,7 +22,7 @@ add_executable(DockerMenu MACOSX_BUNDLE
 target_compile_options(DockerMenu PRIVATE -fobjc-arc -Wall)
 set_target_properties(DockerMenu PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/Info.plist.in"
-  MACOSX_BUNDLE_BUNDLE_NAME "Container Tools for Mavericks"
+  MACOSX_BUNDLE_BUNDLE_NAME "Mavericks Container Tools"
   MACOSX_BUNDLE_GUI_IDENTIFIER "dev.modernmavericks.DockerMenu"
   MACOSX_BUNDLE_BUNDLE_VERSION "${MAVERICKS_DOCKER_VERSION}"
   MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"

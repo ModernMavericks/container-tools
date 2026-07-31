@@ -78,7 +78,7 @@ install -m 0755 "$COMPOSE" "$stage/usr/local/lib/docker/cli-plugins/docker-compo
 ln -s ../lib/docker/cli-plugins/docker-compose "$stage/usr/local/bin/docker-compose"
 install -m 0644 "$ISO"    "$stage/usr/local/share/modernmavericks/container-tools/boot2docker.iso"
 mkdir -p "$stage/Applications"
-cp -R "$MENUBAR" "$stage/Applications/Container Tools for Mavericks.app"
+cp -R "$MENUBAR" "$stage/Applications/Mavericks Container Tools.app"
 
 # Optional VM auto-start: a per-user LaunchAgent (ships Disabled) driving the bootstrap helper.
 # Off by default -- the user turns it on with `launchctl load -w`. root:wheel 0644 so launchd accepts it.
@@ -97,7 +97,7 @@ cat >> "$scripts/postinstall" <<'POST'
 # Launch the menu-bar app once, as the console user, so it registers its Login Item
 # and appears immediately (installer runs as root).
 _uid=$(stat -f %u /dev/console 2>/dev/null)
-[ -n "$_uid" ] && launchctl asuser "$_uid" open -a "/Applications/Container Tools for Mavericks.app" >/dev/null 2>&1 || true
+[ -n "$_uid" ] && launchctl asuser "$_uid" open -a "/Applications/Mavericks Container Tools.app" >/dev/null 2>&1 || true
 exit 0
 POST
 chmod +x "$scripts/postinstall"

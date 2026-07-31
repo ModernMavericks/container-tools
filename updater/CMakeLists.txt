@@ -18,14 +18,14 @@ file(STRINGS "${CMAKE_SOURCE_DIR}/../VERSION" MAVERICKS_DOCKER_VERSION LIMIT_COU
 
 mavericks_add_updater_app(
   NAME ContainerToolsUpdater
-  PRODUCT_NAME "Container Tools for Mavericks"
+  PRODUCT_NAME "Mavericks Container Tools"
   BUNDLE_ID dev.modernmavericks.ContainerToolsUpdater
   FEED_URL "https://github.com/ModernMavericks/container-tools/releases/latest/download/appcast.xml"
   # EdDSA pubkey read by default from this project's updater/ed25519_key.pub (source dir is updater/).
   ICON "${CMAKE_SOURCE_DIR}/container-tools-updater.icns"
   VERSION "${MAVERICKS_DOCKER_VERSION}"
   LOG_PREFIX "MavContainerToolsUpdater"
-  CONFIRM_TITLE "Container Tools for Mavericks updated"
+  CONFIRM_TITLE "Mavericks Container Tools updated"
   CONFIRM_BODY "Docker CLI, Compose, Machine, and the boot2docker image were updated."
   RELAUNCH_MARKER "/tmp/.container-tools-updater-relaunched"
   # After an install, offer to roll existing docker-machine hosts onto the new boot2docker.iso.
