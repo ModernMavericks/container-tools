@@ -114,11 +114,38 @@
   [self.statusItem setMenu:m];
 }
 
+- (void)notifyTitle:(NSString *)title text:(NSString *)text {
+  NSUserNotification *n = [[NSUserNotification alloc] init];
+  n.title = title;
+  n.informativeText = text;
+  [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:n];
+}
+
 - (void)runAndRefresh:(NSString *)verb {
   NSImage *icon = [self iconForState:@"working"];
   icon.template = YES;
   [self.statusItem setImage:icon];
-  [self.controller runVerb:verb completion:^(NSString *out, int code) { [self refresh]; }];
+  [self.controller runVerb:verb completion:^(NSString *out, int code) {
+    [self notifyForVerb:verb code:code];
+    [self refresh];
+  }];
+}
+
+// Terminal-outcome toasts. Only user-initiated menu actions reach here, so timer/login starts
+// never toast. image-upgrade is the one long op that reports a meaningful exit code, so it is the
+// only success toast; the quick verbs stay silent on success (the icon settles immediately) and
+// only speak up on failure. setup is excluded entirely (its exec of bootstrap returns 0 at once).
+- (void)notifyForVerb:(NSString *)verb code:(int)code {
+  BOOL ok = (code == 0);
+  if ([verb isEqualToString:@"image-upgrade"]) {
+    if (ok) [self notifyTitle:@"Container Tools" text:@"VM image updated."];
+    else    [self notifyTitle:@"Container Tools" text:@"VM image update failed — see Show Log."];
+    return;
+  }
+  if (ok) return;   // start/stop/restart: silent on success
+  if ([verb isEqualToString:@"start"])   [self notifyTitle:@"Container Tools" text:@"Starting Docker failed — see Show Log."];
+  if ([verb isEqualToString:@"stop"])    [self notifyTitle:@"Container Tools" text:@"Stopping Docker failed — see Show Log."];
+  if ([verb isEqualToString:@"restart"]) [self notifyTitle:@"Container Tools" text:@"Restarting Docker failed — see Show Log."];
 }
 - (void)doStart:(id)s   { [self runAndRefresh:@"start"]; }
 - (void)doStop:(id)s    { [self runAndRefresh:@"stop"]; }
