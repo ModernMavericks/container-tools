@@ -72,8 +72,14 @@
   __weak MDWatchers *weak = self;
   dispatch_source_set_event_handler(_procSrc, ^{
     MDWatchers *me = weak; if (!me) return;
+    // Stop watching this pid BEFORE notifying. _onChange re-enters refresh -> watchVmxPid:, which
+    // cancels+nils _procSrc; doing that first and then touching me->_procSrc here would call
+    // dispatch_source_cancel(NULL) -> crash. Snapshot the source, clear the ivar, cancel the
+    // snapshot, then notify (the re-entrant watchVmxPid: now sees a nil _procSrc and no-ops).
+    dispatch_source_t src = me->_procSrc;
+    me->_procSrc = nil;
+    if (src) dispatch_source_cancel(src);
     if (me->_onChange) me->_onChange();
-    dispatch_source_cancel(me->_procSrc); me->_procSrc = nil;
   });
   dispatch_resume(_procSrc);
 }
