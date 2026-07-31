@@ -7,8 +7,10 @@ name: release
 # Ships a FULL release on each v* tag -- no manual prerelease/promotion dance. CI proves the build +
 # gates pass; a modern runner can't boot-proof the iso, so the boot-proof auto-skips (ctest code 77)
 # and Sparkle surfaces any real-10.9 breakage. boot2docker updates flow the normal Renovate way: the
-# bump PR runs the CI-possible iso gates (fetch-verify + fingerprint; see boot2docker.yml) and
-# automerges if they pass -- a stale fingerprint golden fails that gate until it's re-baselined.
+# bump PR builds the iso from the pinned source and runs the CI-possible gates (see boot2docker.yml)
+# and automerges if they pass. There is deliberately NO frozen fingerprint of the built iso and no
+# manual boot "bless": both blocked bumps, and the commit DIGEST in components/boot2docker/version is
+# the reproducibility pin (clone_pinned.sh bails if a tag moved).
 
 on:
   push:
@@ -217,7 +219,7 @@ jobs:
           sh "$MSC_SCRIPTS/build-info.sh" build-info-iso.txt \
             variant=iso commit="$GITHUB_SHA" \
             boot2docker="$(sed -n 's/^REF=//p' components/boot2docker/version)" \
-            boot2docker_golden="$(cut -d' ' -f1 components/boot2docker/golden.sha256 2>/dev/null || echo none)" \
+            boot2docker_digest="$(sed -n 's/^DIGEST=//p' components/boot2docker/version)" \
             iso_sha256="$(shasum -a 256 build-iso/boot2docker/boot2docker.iso | cut -d' ' -f1)"
           # Put the record BESIDE the iso and upload that one directory. Listing two paths with
           # different roots makes upload-artifact root the archive at their least common ancestor, so
