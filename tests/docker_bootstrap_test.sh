@@ -351,6 +351,28 @@ case_writes_state() {
 
 case_writes_state
 
+# --- Case: a ctl op holds op.lock -> the timer tick must NOT act on the machine ---
+# A user-initiated start/stop/restart/image-upgrade owns the machine; a concurrent login-agent
+# tick must not fight it (e.g. start the VM mid-stop). It should announce working:<op> and bail.
+case_op_in_progress_skips() {
+  setup; make_docker
+  cat > "$BIN/docker-machine" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DM_LOG"
+case "\$1" in status) echo Stopped ;; start) : > "$WORK/started" ;; esac
+EOF
+  chmod +x "$BIN/docker-machine"
+  mkdir -p "$MAVERICKS_DOCKER_STATE_DIR/op.lock"
+  printf 'stop\n' > "$MAVERICKS_DOCKER_STATE_DIR/op.lock/name"
+  sh "$BOOT" || fail "should exit 0 when an op is in progress"
+  [ -f "$WORK/started" ] && fail "bootstrap must NOT start the VM while an op holds op.lock"
+  [ "$(cat "$MAVERICKS_DOCKER_STATE_DIR/state" 2>/dev/null)" = "working:stop" ] \
+    || fail "bootstrap must announce working:<op> while an op is in progress"
+  teardown
+}
+
+case_op_in_progress_skips
+
 # --- Case: a commented-out env line must NOT trigger the override warning ---
 case_env_commented() {
   setup; make_dm; make_docker
