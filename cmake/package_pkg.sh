@@ -49,7 +49,7 @@ done
 for f in "$DOCKER" "$COMPOSE" "$MACHINE" "$LAZY" "$ISO" "$DOCKED" "$SYNC" "$BOOT" "$COMMON" "$CTL" "$MIGRATE" "$LAUNCHAGENT"; do [ -f "$f" ] || { echo "package_pkg: missing input: $f" >&2; exit 1; }; done
 [ -d "$UPD_APP" ] || { echo "package_pkg: no updater .app: $UPD_APP" >&2; exit 1; }
 [ -d "$MENUBAR" ] || { echo "package_pkg: no menubar .app: $MENUBAR" >&2; exit 1; }
-for h in stage_updater.sh set_install_floor.sh; do
+for h in stage_updater.sh set_install_floor.sh build_component_pkg.sh assert_pkg_installs_in_place.sh; do
   [ -f "$MSC/$h" ] || { echo "package_pkg: shared helper missing: $MSC/$h" >&2; exit 1; }
 done
 
@@ -133,21 +133,13 @@ chmod +x "$scripts/postinstall"
 # entry -- unavoidable, and identical to golang/swift's shipped pkgs. Those merge back into inert
 # xattrs when Installer extracts onto the 10.9 box's HFS+, so no ._ FILES land on the target.
 find "$stage" -name '._*' -delete 2>/dev/null || true
-# Disable bundle relocation. Otherwise PackageKit sees the menu-bar app's CFBundleIdentifier already
-# registered at a DIFFERENT path (e.g. a pre-rename "/Applications/Container Tools for Mavericks.app")
-# and RELOCATES the payload back onto it -- "Mavericks Container Tools.app relocated to Container Tools
-# for Mavericks.app" in install.log -- so the declared install path is silently ignored and the rename
-# never lands. A component plist with BundleIsRelocatable=false on every bundle forces each to install
-# at its RootRelativeBundlePath. --analyze lists one dict per bundle; flip them all.
-cplist="$WORK/component.plist"
-pkgbuild --analyze --root "$stage" "$cplist" >&2
-_i=0
-while /usr/libexec/PlistBuddy -c "Print :${_i}:BundleIsRelocatable" "$cplist" >/dev/null 2>&1; do
-  /usr/libexec/PlistBuddy -c "Set :${_i}:BundleIsRelocatable false" "$cplist" >&2
-  _i=$((_i + 1))
-done
-pkgbuild --root "$stage" --component-plist "$cplist" --identifier "$IDENT" --version "$VER" \
-         --scripts "$scripts" --install-location / "$comp" >&2
+# Component pkg via the shared helper: it forces install-in-place -- BundleIsRelocatable=false, so the
+# payload lands at its DECLARED path instead of being relocated onto a same-identifier bundle already
+# on disk (the bug that kept reinstalling the menu-bar app under its pre-rename name and left the
+# rename un-applied), and BundleIsVersionChecked=false, so an update never skips a component whose
+# on-disk version looks newer. See mavericks-shared-cmake/scripts/build_component_pkg.sh.
+sh "$MSC/build_component_pkg.sh" --root "$stage" --identifier "$IDENT" --version "$VER" \
+  --install-location / --scripts "$scripts" --out "$comp" >&2
 
 # --- product archive with the 10.9.5 OS floor (shared helper) ---
 lic=""; [ -n "$WELCOME" ] && lic="--welcome $WELCOME"
@@ -157,5 +149,9 @@ sh "$MSC/set_install_floor.sh" \
   --title "Container Tools for Mavericks $VER" \
   --component "$comp" --out "$OUT" \
   $resflag $lic --require-scripts --host-arch x86_64 >&2
+
+# Gate the shipped product archive: every bundle must install in place (no relocation, no version-skip).
+# Catches a regression here or a future pkgbuild default before it reaches a user's machine.
+sh "$MSC/assert_pkg_installs_in_place.sh" "$OUT" >&2
 
 echo "$OUT"
