@@ -19,11 +19,19 @@ case "${1:-}" in
   start)   _run_and_announce start ;;
   stop)    _run_and_announce stop ;;
   restart) _run_and_announce restart ;;
+  image-status) image_status ;;
+  # Roll the VM onto the freshly-installed boot2docker.iso. Repoint first (a migrated host's stale
+  # Boot2DockerURL would make `docker-machine upgrade` fail fetching the vanished DMG), then upgrade
+  # (data disk preserved), then bring it up + heal the context. CLI-only; the menu drives this verb.
+  image-upgrade)
+    repoint_iso_url
+    docker-machine upgrade "$MACHINE" >>"$LOG" 2>&1 || true
+    _run_and_announce start ;;
   login-status) launchctl list "$AGENT_LABEL" >/dev/null 2>&1 && echo on || echo off ;;
   login-on)  launchctl load -w "$AGENT_PLIST" >>"$LOG" 2>&1 ;;
   login-off) launchctl unload -w "$AGENT_PLIST" >>"$LOG" 2>&1 ;;
   setup)   exec docker-machine-bootstrap ;;
   migrate) exec docker-machine-migrate ;;
   vmx-pid) pgrep -f "machines/$MACHINE/.*\.vmx" 2>/dev/null | head -1 || true ;;
-  *) echo "usage: docker-machine-ctl {status|start|stop|restart|login-status|login-on|login-off|setup|migrate|vmx-pid}" >&2; exit 2 ;;
+  *) echo "usage: docker-machine-ctl {status|start|stop|restart|image-status|image-upgrade|login-status|login-on|login-off|setup|migrate|vmx-pid}" >&2; exit 2 ;;
 esac

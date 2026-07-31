@@ -1,47 +1,25 @@
 #!/bin/sh
-# Offer to roll existing docker-machine hosts onto the freshly-installed boot2docker.iso.
-# The updater runs this (as the user) after an install; it's also fine to run by hand.
+# Post-install helper: the updater runs this (as the user) after installing a new package; it's also
+# fine to run by hand. A host copies boot2docker.iso at `docker-machine create` and boots that copy
+# forever, so a package update that refreshes the installed ISO doesn't reach the VM until you
+# `docker-machine upgrade` it (data disk preserved).
 #
-# A host copies the iso at `docker-machine create` and boots that copy forever, so a package update that
-# refreshes /usr/local/share/modernmavericks/container-tools/boot2docker.iso does not reach a running host until you
-# `docker-machine upgrade` it (data disk preserved). This finds hosts on an older image and offers that.
-set -eu
+# This does two cheap, reliable things when the VM is on an older image -- and nothing else:
+#   1. Repoints a Wowfunhappy-migrated host's stale Boot2DockerURL (the old, now-unmounted DMG path)
+#      at the installed ISO, so a later upgrade can actually fetch it.
+#   2. Posts a NON-modal notification pointing at where the roll happens.
+#
+# It deliberately does NOT pop a modal dialog or run the upgrade itself. This runs from the updater's
+# silently-relaunched process, whose GUI session is unreliable -- the old modal "Upgrade now?" dialog
+# silently failed to appear after some updates (dogfooding, 2026-07-31). The roll is user-triggered
+# from a reliable context instead: the always-running menu-bar app's "Update VM Image", or the CLI
+# `docker-machine-ctl image-upgrade`. Both share the same detection/repoint helpers used here.
+set -u
+. "${MAVERICKS_DOCKER_COMMON:-/usr/local/libexec/modernmavericks/docker/docker-machine-common.sh}"
 
-INSTALLED="${MAVERICKS_DOCKER_ISO:-/usr/local/share/modernmavericks/container-tools/boot2docker.iso}"
-[ -f "$INSTALLED" ] || exit 0
 command -v docker-machine >/dev/null 2>&1 || exit 0
-MACHDIR="$HOME/.docker/machine/machines"
-[ -d "$MACHDIR" ] || exit 0
+[ "$(image_status)" = stale ] || exit 0   # VM absent, or already on the installed image
 
-NEW=$(shasum -a 256 "$INSTALLED" | awk '{print $1}')
-stale=""
-for d in "$MACHDIR"/*/; do
-  iso="${d}boot2docker.iso"
-  [ -f "$iso" ] || continue
-  [ "$(shasum -a 256 "$iso" | awk '{print $1}')" = "$NEW" ] && continue
-  stale="$stale $(basename "$d")"
-done
-stale=$(echo "$stale" | sed 's/^ *//')
-[ -n "$stale" ] || exit 0   # every host already on the current image
-
-# Offer (default = Upgrade). AppleScript so it works from the background updater's GUI session.
-MSG="The Docker VM image was updated. Roll your host(s) onto it now?
-
-Your images, containers, and volumes are preserved (they live on a separate disk).
-
-Host(s):  $stale"
-btn=$(osascript -e "display dialog \"$MSG\" buttons {\"Later\", \"Upgrade\"} default button \"Upgrade\" with title \"Container Tools for Mavericks\" with icon note" \
-                -e "button returned of result" 2>/dev/null) || exit 0
-[ "$btn" = "Upgrade" ] || exit 0
-
-# Do it in a visible Terminal per host so the user sees progress and any Fusion prompts.
-for name in $stale; do
-  # A Wowfunhappy-migrated host still points Boot2DockerURL at the old DMG (/Volumes/Docker for
-  # Mavericks/...), gone after unmount, so `docker-machine upgrade` fails fetching the ISO. Repoint it
-  # at the installed image first (no-op for hosts already on it). $name may be a compat symlink; sed
-  # follows it to the real config.json.
-  cfg="$MACHDIR/$name/config.json"
-  [ -f "$cfg" ] && sed -i '' "s|\"Boot2DockerURL\": *\"[^\"]*\"|\"Boot2DockerURL\": \"$INSTALLED\"|" "$cfg" 2>/dev/null || true
-  osascript -e "tell application \"Terminal\" to do script \"docker-machine stop $name ; docker-machine upgrade $name && docker-machine start $name\"" >/dev/null 2>&1 || true
-done
-osascript -e 'tell application "Terminal" to activate' >/dev/null 2>&1 || true
+repoint_iso_url   # make the eventual upgrade fetchable, whether it's triggered from the menu or the CLI
+notify image-stale "Container Tools for Mavericks" \
+  "A newer Docker VM image is available. Open the menu-bar app and choose \"Update VM Image\", or run: docker-machine-ctl image-upgrade"

@@ -36,6 +36,15 @@ if grep -q 'ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater' "$AD
 fi
 grep -q '"--user"' "$AD" || fail "'Check for Updates' must run the updater with --user (interactive)"
 
+# When the VM is on an older boot2docker.iso than the freshly-installed one, the menu (a reliable GUI
+# session) surfaces a roll-onto-new-image action. This replaced the updater's post-install modal
+# dialog, which silently failed to appear from its relaunched process (dogfooding 2026-07-31).
+# Detection via the `image-status` verb; the action drives `image-upgrade`; both are docker-machine-ctl
+# verbs, so the identical roll runs headless from the CLI (`docker-machine-ctl image-upgrade`).
+grep -q 'Update VM Image' "$AD" || fail "menu must offer 'Update VM Image' when the VM image is stale"
+grep -q 'image-status'    "$AD" || fail "menu must detect a stale VM image via the image-status verb"
+grep -q 'image-upgrade'   "$AD" || fail "'Update VM Image' must drive the image-upgrade verb"
+
 # A menu-bar extra (LSUIElement) has no app menu; binding Cmd-Q to Quit is not sensible.
 if grep -q 'keyEquivalent:@"q"' "$AD"; then fail "Quit must carry no shortcut (no Cmd-Q on a menu-bar extra)"; fi
 

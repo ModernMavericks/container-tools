@@ -111,3 +111,25 @@ sync_context() {
   fi
   docker context use "$CONTEXT" >>"$LOG" 2>&1 || true
 }
+
+# A host copies boot2docker.iso at `docker-machine create` and boots that copy forever, so a package
+# update that refreshes $ISO doesn't reach the VM until `docker-machine upgrade`. Compare the VM's
+# booted image to the freshly-installed one. Echoes current | stale | absent (no VM / no installed
+# ISO to compare). Pure CLI -- the menu-bar app and a human at a shell both call it.
+image_status() {
+  _mi="$MACHDIR/$MACHINE/boot2docker.iso"
+  [ -f "$_mi" ] && [ -f "$ISO" ] || { echo absent; return; }
+  if [ "$(shasum -a 256 "$_mi" 2>/dev/null | awk '{print $1}')" = "$(shasum -a 256 "$ISO" 2>/dev/null | awk '{print $1}')" ]; then
+    echo current
+  else
+    echo stale
+  fi
+}
+
+# Point the VM's Boot2DockerURL at the installed ISO. A Wowfunhappy-migrated host still holds the old
+# DMG path (/Volumes/Docker for Mavericks/...), gone after unmount, so `docker-machine upgrade` fails
+# fetching it. Unconditional and idempotent -- a no-op for a host already on the installed image.
+repoint_iso_url() {
+  _cfg="$MACHDIR/$MACHINE/config.json"
+  [ -f "$_cfg" ] && sed -i '' "s|\"Boot2DockerURL\": *\"[^\"]*\"|\"Boot2DockerURL\": \"$ISO\"|" "$_cfg" 2>/dev/null || true
+}

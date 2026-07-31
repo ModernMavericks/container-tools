@@ -8,6 +8,7 @@
 @property (strong) MDController *controller;
 @property (strong) MDWatchers *watchers;
 @property (assign) BOOL vmLoginOn;   // cached "Start Docker at login" state
+@property (assign) BOOL imageStale;  // cached: VM is on an older boot2docker.iso than installed
 @end
 
 @implementation AppDelegate
@@ -43,6 +44,13 @@
     BOOL on = [out isEqualToString:@"on"];
     if (on != self.vmLoginOn) { self.vmLoginOn = on; [self rebuildMenuForState:[self.controller currentState]]; }
   }];
+  // Likewise the stale-image state. A package update refreshes the installed boot2docker.iso but the
+  // VM keeps booting its own older copy until `docker-machine upgrade`; when stale we offer the roll
+  // here (a reliable GUI session) rather than from the updater's flaky post-install dialog.
+  [self.controller runVerb:@"image-status" completion:^(NSString *out, int code) {
+    BOOL stale = [out isEqualToString:@"stale"];
+    if (stale != self.imageStale) { self.imageStale = stale; [self rebuildMenuForState:[self.controller currentState]]; }
+  }];
 }
 
 - (NSString *)humanState:(NSString *)s {
@@ -73,6 +81,10 @@
     } else {
       [m addItemWithTitle:@"Start Docker" action:@selector(doStart:) keyEquivalent:@""];
     }
+    // Offer the roll onto the freshly-installed image when the VM is behind (images/containers/volumes
+    // are preserved — they live on a separate disk). Drives docker-machine-ctl image-upgrade.
+    if (self.imageStale)
+      [m addItemWithTitle:@"Update VM Image…" action:@selector(doImageUpgrade:) keyEquivalent:@""];
   }
 
   [m addItem:[NSMenuItem separatorItem]];
@@ -104,6 +116,7 @@
 - (void)doStop:(id)s    { [self runAndRefresh:@"stop"]; }
 - (void)doRestart:(id)s { [self runAndRefresh:@"restart"]; }
 - (void)doSetup:(id)s   { [self runAndRefresh:@"setup"]; }
+- (void)doImageUpgrade:(id)s { [self runAndRefresh:@"image-upgrade"]; }
 
 - (void)showLog:(id)s {
   NSString *log = [NSHomeDirectory() stringByAppendingPathComponent:

@@ -67,8 +67,28 @@ EOF
   teardown
 }
 
+# image_status compares the VM's booted ISO to the freshly-installed one; repoint_iso_url fixes a
+# migrated host's stale Boot2DockerURL. Both are CLI-usable (no GUI).
+case_image_status() {
+  setup
+  export MAVERICKS_DOCKER_MACHDIR="$WORK/machines"; mkdir -p "$MAVERICKS_DOCKER_MACHDIR/container-tools"
+  export MAVERICKS_DOCKER_ISO="$WORK/installed.iso"; printf 'NEW\n' > "$MAVERICKS_DOCKER_ISO"
+  _m="$MAVERICKS_DOCKER_MACHDIR/container-tools/boot2docker.iso"
+  ( . "$COMMON"; [ "$(image_status)" = absent ] )  || fail "no machine iso -> absent"
+  cp "$MAVERICKS_DOCKER_ISO" "$_m"
+  ( . "$COMMON"; [ "$(image_status)" = current ] ) || fail "matching iso -> current"
+  printf 'OLD\n' > "$_m"
+  ( . "$COMMON"; [ "$(image_status)" = stale ] )   || fail "differing iso -> stale"
+  printf '{ "Boot2DockerURL": "/Volumes/Old/boot2docker.iso" }\n' > "$MAVERICKS_DOCKER_MACHDIR/container-tools/config.json"
+  ( . "$COMMON"; repoint_iso_url )
+  grep -q "\"Boot2DockerURL\": \"$MAVERICKS_DOCKER_ISO\"" "$MAVERICKS_DOCKER_MACHDIR/container-tools/config.json" \
+    || fail "repoint_iso_url must set Boot2DockerURL to the installed ISO"
+  teardown
+}
+
 case_status_word
 case_creating
 case_write_state
 case_bindir_on_path
+case_image_status
 echo "docker_common_test: OK"

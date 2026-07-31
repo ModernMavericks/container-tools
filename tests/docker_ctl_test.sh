@@ -164,8 +164,27 @@ case_release_lock() {
   echo "  release-lock OK"
 }
 
+# CLI-first image roll: image-status echoes current/stale/absent; image-upgrade repoints a stale
+# Boot2DockerURL (Wowfunhappy-migrated hosts hold the vanished DMG path) THEN `docker-machine upgrade`
+# and heals. No GUI in the loop — the menu-bar app just shells out to these.
+case_image() {
+  setup; stub_dm Running
+  export MAVERICKS_DOCKER_MACHDIR="$WORK/machines"; mkdir -p "$MAVERICKS_DOCKER_MACHDIR/container-tools"
+  export MAVERICKS_DOCKER_ISO="$WORK/installed.iso"; printf 'NEW\n' > "$MAVERICKS_DOCKER_ISO"
+  printf 'OLD\n' > "$MAVERICKS_DOCKER_MACHDIR/container-tools/boot2docker.iso"
+  printf '{ "Boot2DockerURL": "/Volumes/Docker for Mavericks/boot2docker.iso" }\n' \
+    > "$MAVERICKS_DOCKER_MACHDIR/container-tools/config.json"
+  [ "$(sh "$CTL" image-status)" = stale ] || fail "image-status must report stale when the VM iso differs"
+  sh "$CTL" image-upgrade >/dev/null || fail "image-upgrade exit 0"
+  grep -q "\"Boot2DockerURL\": \"$MAVERICKS_DOCKER_ISO\"" "$MAVERICKS_DOCKER_MACHDIR/container-tools/config.json" \
+    || fail "image-upgrade must repoint Boot2DockerURL to the installed ISO before upgrading"
+  grep -q '^upgrade container-tools' "$DM_LOG" || fail "image-upgrade must call docker-machine upgrade"
+  teardown
+}
+
 case_status
 case_start_stop
+case_image
 case_start_syncs_context
 case_status_stays_fast
 case_login
