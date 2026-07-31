@@ -218,12 +218,14 @@ add_test(NAME sdk_coverage
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
              --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh"
              "${DOCKER_BIN}")
-add_test(NAME characterize
-  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/characterize_build.sh" compare
-             "${CMAKE_SOURCE_DIR}/cmake/characterization/docker-cli" "${DOCKER_BIN}")
-# characterize reads the binary's gomod via `go version -m`; use the SAME go that
-# built it (MAVERICKS_DOCKER_GO), not whatever `go` is on PATH.
-set_tests_properties(characterize PROPERTIES ENVIRONMENT "GO=${MAVERICKS_DOCKER_GO}")
+# NB: there is deliberately NO frozen-gomod "characterize" gate here anymore. The family intent is to
+# auto-merge patch/minor/major upstream bumps on a clear SHIPPABILITY signal (compat_guard + sdk_coverage
+# below re-check the actual new binary: arch, 10.9 floor, no post-10.9 symbols, every import 10.9-available)
+# and to fix any runtime regression in a -mavericks.2 repackage. A frozen reference of the module set
+# diverges on *every* dependency bump -- it signals "something changed", not "unshippable" -- so it only
+# blocked auto-merge without adding a 10.9-safety signal (identity is already pinned at fetch). Removed
+# 2026-07-31. (boot2docker's iso_fingerprint/iso_boot_proof stay: booting the ISO on real 10.9 hardware
+# IS a shippability signal, not a mere-change tripwire.)
 
 # docker-machine through the same 10.9-safety gates.
 add_test(NAME compat_guard_machine
@@ -258,12 +260,9 @@ add_test(NAME compat_guard_test
 add_test(NAME sdk_coverage_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/sdk_coverage_test.sh" "${DOCKER_BIN}"
              "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh")
-add_test(NAME characterize_test
-  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/characterize_test.sh" "${DOCKER_BIN}")
 # Self-contained (no built binary needed).
 foreach(t scaffold_test renovate_test docker_compose_test docker_bootstrap_test docker_common_test docker_ctl_test docker_migrate_test docker_sync_image_test docker_menubar_test)
   add_test(NAME ${t} COMMAND sh "${CMAKE_SOURCE_DIR}/tests/${t}.sh")
 endforeach()
 add_test(NAME fetch_sdk_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/fetch_sdk_test.sh" "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh")
-set_tests_properties(characterize_test PROPERTIES ENVIRONMENT "GO=${MAVERICKS_DOCKER_GO}")
