@@ -1,3 +1,3 @@
 REPO=https://github.com/docker/compose.git
-REF=v5.3.1
-DIGEST=f32009d4a2c687dd405398cc7975d12dccaf8dff
+REF=v5.4.0
+DIGEST=ef61d7410a0c816a71705026e638ec256a591d69
