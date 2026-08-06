@@ -1,0 +1,40 @@
+#!/bin/sh
+# container-tools-get-fusion — find the first VMware Fusion .dmg on the Macintosh Garden page and
+# download it. AquaProxy handles TLS on the old-OS hosts, so plain curl (no CA logic). On ANY
+# failure, open the page in a browser so the user is never stuck. Env: GET_FUSION_PAGE_URL,
+# GET_FUSION_DEST (override for tests).
+set -u
+PAGE="${GET_FUSION_PAGE_URL:-https://macintoshgarden.org/apps/vmware-fusion-8-yosemite-el-capitan}"
+DEST="${GET_FUSION_DEST:-$HOME/Downloads}"
+
+open_page() { open "$PAGE" >/dev/null 2>&1 || true; }
+
+html=$(curl -fsSL "$PAGE" 2>/dev/null) || { echo "get-fusion: page fetch failed" >&2; open_page; exit 1; }
+
+# Every /apps/*.dmg href, in document order, normalized to https. Links are double-quoted in the
+# page HTML, so matching on the "…" boundary is enough (no single-quote handling needed).
+urls=$(printf '%s\n' "$html" \
+  | grep -oE 'href="//[^"]+/apps/[^"]+\.dmg[^"]*"' \
+  | sed -e 's,^href="//,https://,' -e 's,"$,,')
+[ -n "$urls" ] || { echo "get-fusion: no .dmg link found" >&2; open_page; exit 1; }
+
+# Main installer = the first .dmg FILENAME to appear; restrict to that file's mirrors.
+first_file=$(printf '%s\n' "$urls" | head -1 | sed -e 's,.*/,,' -e 's,?.*,,')
+mirrors=$(printf '%s\n' "$urls" | grep -F "/$first_file")
+
+# Prefer a token-free mirror host (no expiring query); else any token-free url; else the first.
+pick=$(printf '%s\n' "$mirrors" | grep -E '://(old\.mac\.gdn|gardenmirror\.oldapplestuff\.com)/' | grep -v '?' | head -1)
+[ -n "$pick" ] || pick=$(printf '%s\n' "$mirrors" | grep -v '?' | head -1)
+[ -n "$pick" ] || pick=$(printf '%s\n' "$mirrors" | head -1)
+
+mkdir -p "$DEST" || { echo "get-fusion: cannot create $DEST" >&2; open_page; exit 1; }
+out="$DEST/$first_file"
+if curl -fL --progress-bar -o "$out" "$pick"; then
+  open -R "$out" >/dev/null 2>&1 || true   # reveal in Finder
+  open "$out"    >/dev/null 2>&1 || true    # mount the dmg
+  echo "get-fusion: downloaded $out"
+  exit 0
+fi
+echo "get-fusion: download failed ($pick)" >&2
+open_page
+exit 1
