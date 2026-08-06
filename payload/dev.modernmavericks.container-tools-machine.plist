@@ -6,14 +6,16 @@
   <key>Label</key>
   <string>dev.modernmavericks.container-tools-machine</string>
 
-  <!-- Ships off. Enable per-user with `launchctl load -w`, disable with `unload -w`. -->
-  <key>Disabled</key>
-  <true/>
+  <!-- Enabled by default. A user can turn VM auto-start off via the menu's
+       "Start Docker at Login" toggle (docker-machine-ctl login-off = unload -w). -->
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
     <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- Silent create: no Terminal window on first run; menu-bar shows "Docker: Starting…". -->
+    <key>MAVERICKS_DOCKER_NONINTERACTIVE</key>
+    <string>1</string>
   </dict>
 
   <key>ProgramArguments</key>
