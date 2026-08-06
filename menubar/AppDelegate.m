@@ -32,6 +32,7 @@
 
 - (void)refresh {
   NSString *state = [self.controller currentState];
+  if ([state isEqualToString:@"no-fusion"]) [self maybePromptForFusion];
   NSImage *icon = [self iconForState:state];
   icon.template = YES;
   [self.statusItem setImage:icon];
@@ -81,8 +82,7 @@
   [m addItem:[NSMenuItem separatorItem]];
 
   if ([state isEqualToString:@"no-fusion"]) {
-    NSMenuItem *f = [m addItemWithTitle:@"Install VMware Fusion…" action:NULL keyEquivalent:@""];
-    f.enabled = NO;
+    [m addItemWithTitle:@"Get VMware Fusion…" action:@selector(doGetFusion:) keyEquivalent:@""];
   } else if ([state isEqualToString:@"absent"] || [state isEqualToString:@"error"]) {
     [m addItemWithTitle:@"Set Up / Repair…" action:@selector(doSetup:) keyEquivalent:@""];
   } else if (![state isEqualToString:@"creating"] && ![state hasPrefix:@"working"]) {
@@ -155,6 +155,28 @@
 - (void)doRestart:(id)s { [self runAndRefresh:@"restart"]; }
 - (void)doSetup:(id)s   { [self runAndRefresh:@"setup"]; }
 - (void)doImageUpgrade:(id)s { [self runAndRefresh:@"image-upgrade"]; }
+
+- (void)doGetFusion:(id)s {
+  [self notifyTitle:@"Container Tools" text:@"Downloading VMware Fusion (467 MB)…"];
+  NSTask *t = [[NSTask alloc] init];
+  t.launchPath = @"/usr/local/bin/container-tools-get-fusion";
+  @try { [t launch]; }
+  @catch (NSException *e) { NSLog(@"Container Tools: could not run get-fusion: %@", e); }
+}
+
+- (void)maybePromptForFusion {
+  static NSString * const kSeeded = @"MDFusionPromptSeeded";
+  NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+  if ([d boolForKey:kSeeded]) return;
+  // Seed before showing so the alert can never appear twice (fires at most once, ever).
+  [d setBool:YES forKey:kSeeded];
+  NSAlert *a = [[NSAlert alloc] init];
+  a.messageText = @"VMware Fusion is required";
+  a.informativeText = @"Container Tools needs VMware Fusion to run the Docker VM.";
+  [a addButtonWithTitle:@"Get VMware Fusion"];   // first = default
+  [a addButtonWithTitle:@"Later"];
+  if ([a runModal] == NSAlertFirstButtonReturn) [self doGetFusion:nil];
+}
 
 - (void)showLog:(id)s {
   NSString *log = [NSHomeDirectory() stringByAppendingPathComponent:

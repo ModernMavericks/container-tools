@@ -56,4 +56,13 @@ grep -q 'asuser' "$ROOT/cmake/package_pkg.sh" || fail "postinstall must launch t
 grep -q -- '--menubar-app' "$ROOT/.github/workflows/release.yml" || fail "release.yml must pass --menubar-app"
 grep -q 'cmake -S menubar' "$ROOT/.github/workflows/release.yml" || fail "release.yml must build the menubar app"
 
+# Fusion-absent is actionable: a "Get VMware Fusion" item/handler runs the get-fusion helper, and a
+# one-time alert (seeded in NSUserDefaults) prompts on first no-fusion. The old dead disabled item is gone.
+grep -q 'doGetFusion' "$AD" || fail "menu must have a doGetFusion action for the no-fusion state"
+grep -q '@selector(doGetFusion:)' "$AD" || fail "the Get-VMware-Fusion menu item must wire @selector(doGetFusion:)"
+grep -q 'container-tools-get-fusion' "$AD" || fail "doGetFusion must run the get-fusion helper"
+grep -q 'MDFusionPromptSeeded' "$AD" || fail "must guard the one-time Fusion alert via NSUserDefaults"
+grep -q 'NSAlert' "$AD" || fail "must show an NSAlert when Fusion is absent"
+grep -q '@"Get VMware Fusion' "$AD" || fail "menu/alert must offer 'Get VMware Fusion'"
+
 echo "docker_menubar_test: OK"
