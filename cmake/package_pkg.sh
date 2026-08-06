@@ -83,8 +83,9 @@ install -m 0644 "$ISO"    "$stage/usr/local/share/modernmavericks/container-tool
 mkdir -p "$stage/Applications"
 cp -R "$MENUBAR" "$stage/Applications/Mavericks Container Tools.app"
 
-# Optional VM auto-start: a per-user LaunchAgent (ships Disabled) driving the bootstrap helper.
-# Off by default -- the user turns it on with `launchctl load -w`. root:wheel 0644 so launchd accepts it.
+# VM auto-start: a per-user LaunchAgent (ships ENABLED) driving the bootstrap helper. Auto-starts at
+# login (the postinstall also `load`s it now); a user turns it off via the menu's "Start Docker at
+# Login" toggle (login-off = unload -w, which survives upgrades). root:wheel 0644 so launchd accepts it.
 mkdir -p "$stage/Library/LaunchAgents"
 install -m 0644 "$LAUNCHAGENT" "$stage/Library/LaunchAgents/dev.modernmavericks.container-tools-machine.plist"
 
