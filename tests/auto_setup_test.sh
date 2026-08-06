@@ -15,4 +15,15 @@ grep -q 'MAVERICKS_DOCKER_NONINTERACTIVE' "$PLIST" || fail "agent must set MAVER
 grep -q '<key>RunAtLoad</key>' "$PLIST" || fail "agent must keep RunAtLoad"
 grep -q '<key>StartInterval</key>' "$PLIST" || fail "agent must keep StartInterval"
 
+PKG="$ROOT/cmake/package_pkg.sh"
+# The assembled postinstall must load the machine agent for the console user, WITHOUT -w
+# (so a user's explicit login-off opt-out survives upgrades).
+grep -q 'launchctl asuser "\$_uid" load' "$PKG" \
+  || fail "postinstall must 'launchctl asuser \$_uid load' the machine agent"
+grep -q 'container-tools-machine.plist' "$PKG" \
+  || fail "postinstall must reference the machine LaunchAgent plist"
+if grep -q 'launchctl asuser "\$_uid" load -w' "$PKG"; then
+  fail "postinstall must NOT use 'load -w' (that would stomp an explicit opt-out)"
+fi
+
 echo "auto_setup_test: OK"

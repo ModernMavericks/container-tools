@@ -123,6 +123,10 @@ if [ -n "$_uid" ] && [ "${_uid:-0}" -gt 0 ]; then
   # Launch the (new) menu-bar app as the console user so it registers its Login Item and appears
   # immediately (installer runs as root).
   launchctl asuser "$_uid" open -a "/Applications/Mavericks Container Tools.app" >/dev/null 2>&1 || true
+  # Start the Docker VM now, as the console user (VM creation needs the user's Fusion/GUI session,
+  # not root). Plain `load` (no -w): the plist ships enabled so a fresh install auto-starts, while a
+  # user who chose "Start Docker at Login → off" (unload -w) keeps that opt-out through upgrades.
+  launchctl asuser "$_uid" load "/Library/LaunchAgents/dev.modernmavericks.container-tools-machine.plist" >/dev/null 2>&1 || true
 fi
 exit 0
 POST
