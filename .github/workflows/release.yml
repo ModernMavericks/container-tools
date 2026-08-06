@@ -317,6 +317,7 @@ jobs:
             --common payload/docker-machine-common.sh \
             --ctl payload/docker-machine-ctl \
             --migrate payload/docker-machine-migrate \
+            --get-fusion payload/container-tools-get-fusion \
             --menubar-app in/DockerMenu.app \
             --launch-agent payload/dev.modernmavericks.container-tools-machine.plist \
             --resources cmake/resources --welcome Welcome.html

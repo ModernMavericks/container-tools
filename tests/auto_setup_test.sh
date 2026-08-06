@@ -26,4 +26,12 @@ if grep -q 'launchctl asuser "\$_uid" load -w' "$PKG"; then
   fail "postinstall must NOT use 'load -w' (that would stomp an explicit opt-out)"
 fi
 
+# package_pkg.sh must accept --get-fusion and install it to /usr/local/bin.
+grep -q '\-\-get-fusion) GETFUSION=' "$PKG" || fail "package_pkg.sh must parse --get-fusion"
+grep -q 'usr/local/bin/container-tools-get-fusion' "$PKG" \
+  || fail "package_pkg.sh must install container-tools-get-fusion into /usr/local/bin"
+# release.yml must pass the helper through.
+grep -q '\-\-get-fusion payload/container-tools-get-fusion' "$ROOT/.github/workflows/release.yml" \
+  || fail "release.yml must pass --get-fusion payload/container-tools-get-fusion"
+
 echo "auto_setup_test: OK"
