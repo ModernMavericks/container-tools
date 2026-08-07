@@ -7,7 +7,7 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd); . "$(dirname "$0")/common.sh"
 export LC_ALL=C
 # The shared fetch_sdk.sh location is passed by the caller (CMake knows
-# MavericksSharedCMake_DIR); this script no longer ships its own copy.
+# MavericksShipyard_DIR); this script no longer ships its own copy.
 FETCH_SCRIPT=""
 if [ "${1-}" = "--fetch-script" ]; then FETCH_SCRIPT="$2"; shift 2; fi
 [ -n "$FETCH_SCRIPT" ] || mavericks_docker_die "sdk_coverage.sh: --fetch-script <path> is required"

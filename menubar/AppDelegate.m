@@ -189,7 +189,7 @@
   // "up to date" alert). Launch it via LaunchServices (`open`), NOT a direct fork+exec of the
   // executable: Sparkle's package install needs a LaunchServices-launched host — a fork+exec child
   // has no LaunchServices session, so AuthorizationExecuteWithPrivileges can't run its privileged
-  // helper and the install fails with -60008 (see the updater's Info.plist note in shared-cmake).
+  // helper and the install fails with -60008 (see the updater's Info.plist note in shipyard).
   // `open` returns as soon as it hands off, so there's nothing to reap.
   NSTask *t = [[NSTask alloc] init];
   t.launchPath = @"/usr/bin/open";

@@ -5,7 +5,7 @@
 # workflow; this script only builds the .pkg.
 #
 # Product-specific payload layout lives HERE; the generic mechanics (updater staging, the OS-floor
-# product archive) come from mavericks-shared-cmake via $MSC_SCRIPTS. Prints the .pkg path on stdout.
+# product archive) come from mavericks-shipyard via $SHIPYARD_SCRIPTS. Prints the .pkg path on stdout.
 #
 # Usage:
 #   package_pkg.sh --out PKG --version V --docker BIN --compose BIN --machine BIN --iso ISO \
@@ -16,7 +16,7 @@ export COPYFILE_DISABLE=1
 
 OUT=""; VER=""; DOCKER=""; COMPOSE=""; MACHINE=""; LAZY=""; ISO=""; UPD_APP=""; DOCKED=""; SYNC=""
 BOOT=""; COMMON=""; CTL=""; MIGRATE=""; GETFUSION=""; MENUBAR=""; LAUNCHAGENT=""
-MSC="${MSC_SCRIPTS:-}"; RES=""; WELCOME=""
+SHIPYARD="${SHIPYARD_SCRIPTS:-}"; RES=""; WELCOME=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT="$2"; shift 2;;
@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
     --get-fusion) GETFUSION="$2"; shift 2;;
     --menubar-app) MENUBAR="$2"; shift 2;;
     --launch-agent) LAUNCHAGENT="$2"; shift 2;;
-    --msc-scripts) MSC="$2"; shift 2;;
+    --msc-scripts) SHIPYARD="$2"; shift 2;;
     --resources) RES="$2"; shift 2;;
     --welcome) WELCOME="$2"; shift 2;;
     *) echo "package_pkg: unknown arg: $1" >&2; exit 2;;
@@ -46,13 +46,13 @@ done
   && [ -n "$LAZY" ] && [ -n "$ISO" ] && [ -n "$UPD_APP" ] && [ -n "$DOCKED" ] && [ -n "$SYNC" ] \
   && [ -n "$BOOT" ] && [ -n "$COMMON" ] && [ -n "$CTL" ] && [ -n "$MIGRATE" ] && [ -n "$GETFUSION" ] && [ -n "$MENUBAR" ] && [ -n "$LAUNCHAGENT" ] \
   || { echo "package_pkg: need --out --version --docker --compose --machine --lazydocker --iso --updater-app --docked --sync-helper --bootstrap --common --ctl --migrate --get-fusion --menubar-app --launch-agent" >&2; exit 2; }
-[ -n "$MSC" ] || { echo "package_pkg: MSC_SCRIPTS unset (install mavericks-shared-cmake, or pass --msc-scripts)" >&2; exit 2; }
+[ -n "$SHIPYARD" ] || { echo "package_pkg: SHIPYARD_SCRIPTS unset (install mavericks-shipyard, or pass --msc-scripts)" >&2; exit 2; }
 for f in "$DOCKER" "$COMPOSE" "$MACHINE" "$LAZY" "$ISO" "$DOCKED" "$SYNC" "$BOOT" "$COMMON" "$CTL" "$MIGRATE" "$GETFUSION" "$LAUNCHAGENT"; do [ -f "$f" ] || { echo "package_pkg: missing input: $f" >&2; exit 1; }; done
 [ -d "$UPD_APP" ] || { echo "package_pkg: no updater .app: $UPD_APP" >&2; exit 1; }
 [ -d "$MENUBAR" ] || { echo "package_pkg: no menubar .app: $MENUBAR" >&2; exit 1; }
 for h in stage_updater.sh set_install_floor.sh build_component_pkg.sh assert_pkg_installs_in_place.sh \
          postinstall-stop-gui.sh assert_gui_relaunch_safe.sh; do
-  [ -f "$MSC/$h" ] || { echo "package_pkg: shared helper missing: $MSC/$h" >&2; exit 1; }
+  [ -f "$SHIPYARD/$h" ] || { echo "package_pkg: shared helper missing: $SHIPYARD/$h" >&2; exit 1; }
 done
 
 IDENT="dev.modernmavericks.container-tools"
@@ -90,7 +90,7 @@ mkdir -p "$stage/Library/LaunchAgents"
 install -m 0644 "$LAUNCHAGENT" "$stage/Library/LaunchAgents/dev.modernmavericks.container-tools-machine.plist"
 
 # --- updater app + LaunchAgent + postinstall (shared, hoisted) ---
-sh "$MSC/stage_updater.sh" --stage "$stage" --app "$UPD_APP" --app-dir "$UPD_APPDIR" \
+sh "$SHIPYARD/stage_updater.sh" --stage "$stage" --app "$UPD_APP" --app-dir "$UPD_APPDIR" \
   --agent-label "$AGENT_LABEL" --scripts-out "$scripts"
 
 # stage_updater.sh's generated postinstall ends with `exit 0`; drop a trailing standalone
@@ -138,8 +138,8 @@ chmod +x "$scripts/postinstall"
 # Stage the shared stop-the-old-menu-bar-instance helper the postinstall sources (present at install
 # time on the target; a build-host script is not). Then gate the assembled postinstall -- a GUI-app
 # relaunch must be preceded by a stop -- and confirm the staged helper parses + defines the function.
-install -m 0644 "$MSC/postinstall-stop-gui.sh" "$scripts/stop-gui.sh"
-sh "$MSC/assert_gui_relaunch_safe.sh" "$scripts/postinstall" >&2
+install -m 0644 "$SHIPYARD/postinstall-stop-gui.sh" "$scripts/stop-gui.sh"
+sh "$SHIPYARD/assert_gui_relaunch_safe.sh" "$scripts/postinstall" >&2
 sh -n "$scripts/postinstall" || { echo "package_pkg: assembled postinstall has a syntax error" >&2; exit 1; }
 sh -c '. "$1"; command -v mav_stop_gui_instance >/dev/null' _ "$scripts/stop-gui.sh" \
   || { echo "package_pkg: staged stop-gui.sh does not define mav_stop_gui_instance" >&2; exit 1; }
@@ -154,14 +154,14 @@ find "$stage" -name '._*' -delete 2>/dev/null || true
 # payload lands at its DECLARED path instead of being relocated onto a same-identifier bundle already
 # on disk (the bug that kept reinstalling the menu-bar app under its pre-rename name and left the
 # rename un-applied), and BundleIsVersionChecked=false, so an update never skips a component whose
-# on-disk version looks newer. See mavericks-shared-cmake/scripts/build_component_pkg.sh.
-sh "$MSC/build_component_pkg.sh" --root "$stage" --identifier "$IDENT" --version "$VER" \
+# on-disk version looks newer. See mavericks-shipyard/scripts/build_component_pkg.sh.
+sh "$SHIPYARD/build_component_pkg.sh" --root "$stage" --identifier "$IDENT" --version "$VER" \
   --install-location / --scripts "$scripts" --out "$comp" >&2
 
 # --- product archive with the 10.9.5 OS floor (shared helper) ---
 lic=""; [ -n "$WELCOME" ] && lic="--welcome $WELCOME"
 resflag=""; [ -n "$RES" ] && resflag="--resources $RES"
-sh "$MSC/set_install_floor.sh" \
+sh "$SHIPYARD/set_install_floor.sh" \
   --identifier "$IDENT" \
   --title "Container Tools for Mavericks $VER" \
   --component "$comp" --out "$OUT" \
@@ -169,6 +169,6 @@ sh "$MSC/set_install_floor.sh" \
 
 # Gate the shipped product archive: every bundle must install in place (no relocation, no version-skip).
 # Catches a regression here or a future pkgbuild default before it reaches a user's machine.
-sh "$MSC/assert_pkg_installs_in_place.sh" "$OUT" >&2
+sh "$SHIPYARD/assert_pkg_installs_in_place.sh" "$OUT" >&2
 
 echo "$OUT"

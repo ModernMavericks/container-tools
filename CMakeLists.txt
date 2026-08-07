@@ -4,12 +4,12 @@ cmake_minimum_required(VERSION 3.15)
 # the go build flags below + the compat_guard gate, NOT CMake's compiler vars.
 project(mavericks_docker LANGUAGES NONE)
 
-# shared-cmake is needed in BOTH modes: the build-artifact gate scripts (compat_guard, sdk_coverage) for
+# shipyard is needed in BOTH modes: the build-artifact gate scripts (compat_guard, sdk_coverage) for
 # the Go builds, AND clone_pinned.sh -- the digest-verified git fetch used for every pinned source,
 # including the iso's boot2docker clone. (The 10.9 SDK, target flags, and legacy shim come from the go126
 # toolchain's CC wrapper; sdk_coverage fetches its own reference SDK via --fetch-script.)
 # Found up here rather than further down because the version resolution below needs it.
-find_package(MavericksSharedCMake REQUIRED)
+find_package(MavericksShipyard REQUIRED)
 
 # The product version (feeds the .pkg name + the release tag). NOT passed to project(VERSION ...): the
 # mavericks scheme (20260727-mavericks.15) is not a valid CMake version, and nothing here needs
@@ -114,7 +114,7 @@ if(MAVERICKS_DOCKER_MODE STREQUAL "iso")
   set(B2D_ISO "${B2D_OUT}/boot2docker.iso")
   ExternalProject_Add(boot2docker
     SOURCE_DIR       "${B2D_SRC}"
-    DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+    DOWNLOAD_COMMAND sh "${MavericksShipyard_SCRIPTS}/clone_pinned.sh"
                        "${B2D_REPO}" "${B2D_REF}" "${B2D_DIGEST}" "${B2D_SRC}"
     UPDATE_COMMAND   ""
     CONFIGURE_COMMAND ""
@@ -149,7 +149,7 @@ set(DOCKER_BIN "${DC_OUT}/docker")
 set(DC_SRC     "${MAVERICKS_DOCKER_SRC_CACHE}/docker-cli-${DC_REF}")
 ExternalProject_Add(docker_cli
   SOURCE_DIR       "${DC_SRC}"
-  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+  DOWNLOAD_COMMAND sh "${MavericksShipyard_SCRIPTS}/clone_pinned.sh"
                      "${DC_REPO}" "${DC_REF}" "${DC_DIGEST}" "${DC_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
@@ -169,7 +169,7 @@ set(DM_OUT      "${CMAKE_BINARY_DIR}/docker-machine")
 set(MACHINE_BIN "${DM_OUT}/docker-machine")
 ExternalProject_Add(docker_machine
   SOURCE_DIR       "${DM_SRC}"
-  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+  DOWNLOAD_COMMAND sh "${MavericksShipyard_SCRIPTS}/clone_pinned.sh"
                      "${DM_REPO}" "${DM_REF}" "${DM_DIGEST}" "${DM_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
@@ -188,7 +188,7 @@ set(CO_OUT      "${CMAKE_BINARY_DIR}/docker-compose")
 set(COMPOSE_BIN "${CO_OUT}/docker-compose")
 ExternalProject_Add(docker_compose
   SOURCE_DIR       "${CO_SRC}"
-  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+  DOWNLOAD_COMMAND sh "${MavericksShipyard_SCRIPTS}/clone_pinned.sh"
                      "${CO_REPO}" "${CO_REF}" "${CO_DIGEST}" "${CO_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
@@ -206,7 +206,7 @@ set(LD_OUT   "${CMAKE_BINARY_DIR}/lazydocker")
 set(LAZY_BIN "${LD_OUT}/lazydocker")
 ExternalProject_Add(lazydocker
   SOURCE_DIR       "${LD_SRC}"
-  DOWNLOAD_COMMAND sh "${MavericksSharedCMake_SCRIPTS}/clone_pinned.sh"
+  DOWNLOAD_COMMAND sh "${MavericksShipyard_SCRIPTS}/clone_pinned.sh"
                      "${LD_REPO}" "${LD_REF}" "${LD_DIGEST}" "${LD_SRC}"
   UPDATE_COMMAND   ""
   BUILD_IN_SOURCE  TRUE
@@ -219,10 +219,10 @@ ExternalProject_Add(lazydocker
 
 # Fail-closed build-artifact gates (run after `cmake --build`).
 add_test(NAME compat_guard
-  COMMAND sh "${MavericksSharedCMake_SCRIPTS}/assert_binary_compatible.sh" "${DOCKER_BIN}")
+  COMMAND sh "${MavericksShipyard_SCRIPTS}/assert_binary_compatible.sh" "${DOCKER_BIN}")
 add_test(NAME sdk_coverage
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
-             --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh"
+             --fetch-script "${MavericksShipyard_SCRIPTS}/fetch_sdk.sh"
              "${DOCKER_BIN}")
 # NB: there is deliberately NO frozen-gomod "characterize" gate here anymore. The family intent is to
 # auto-merge patch/minor/major upstream bumps on a clear SHIPPABILITY signal (compat_guard + sdk_coverage
@@ -235,24 +235,24 @@ add_test(NAME sdk_coverage
 
 # docker-machine through the same 10.9-safety gates.
 add_test(NAME compat_guard_machine
-  COMMAND sh "${MavericksSharedCMake_SCRIPTS}/assert_binary_compatible.sh" "${MACHINE_BIN}")
+  COMMAND sh "${MavericksShipyard_SCRIPTS}/assert_binary_compatible.sh" "${MACHINE_BIN}")
 add_test(NAME sdk_coverage_machine
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
-             --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh"
+             --fetch-script "${MavericksShipyard_SCRIPTS}/fetch_sdk.sh"
              "${MACHINE_BIN}")
 # docker-compose through the same 10.9-safety gates.
 add_test(NAME compat_guard_compose
-  COMMAND sh "${MavericksSharedCMake_SCRIPTS}/assert_binary_compatible.sh" "${COMPOSE_BIN}")
+  COMMAND sh "${MavericksShipyard_SCRIPTS}/assert_binary_compatible.sh" "${COMPOSE_BIN}")
 add_test(NAME sdk_coverage_compose
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
-             --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh"
+             --fetch-script "${MavericksShipyard_SCRIPTS}/fetch_sdk.sh"
              "${COMPOSE_BIN}")
 # lazydocker through the same 10.9-safety gates.
 add_test(NAME compat_guard_lazydocker
-  COMMAND sh "${MavericksSharedCMake_SCRIPTS}/assert_binary_compatible.sh" "${LAZY_BIN}")
+  COMMAND sh "${MavericksShipyard_SCRIPTS}/assert_binary_compatible.sh" "${LAZY_BIN}")
 add_test(NAME sdk_coverage_lazydocker
   COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/sdk_coverage.sh"
-             --fetch-script "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh"
+             --fetch-script "${MavericksShipyard_SCRIPTS}/fetch_sdk.sh"
              "${LAZY_BIN}")
 
 # Unit tests (script behavior + output invariants). Output-asserting ones take the
@@ -262,13 +262,13 @@ add_test(NAME docker_cli_unit
 # These exercise the gate scripts against the built binary -> pass DOCKER_BIN so they
 # work with any build dir (cmake -B <dir>), not a hardcoded build/.
 add_test(NAME compat_guard_test
-  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/compat_guard_test.sh" "${DOCKER_BIN}" "${MavericksSharedCMake_SCRIPTS}/assert_binary_compatible.sh")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/compat_guard_test.sh" "${DOCKER_BIN}" "${MavericksShipyard_SCRIPTS}/assert_binary_compatible.sh")
 add_test(NAME sdk_coverage_test
   COMMAND sh "${CMAKE_SOURCE_DIR}/tests/sdk_coverage_test.sh" "${DOCKER_BIN}"
-             "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh")
+             "${MavericksShipyard_SCRIPTS}/fetch_sdk.sh")
 # Self-contained (no built binary needed).
 foreach(t scaffold_test renovate_test docker_compose_test docker_bootstrap_test docker_common_test docker_ctl_test docker_migrate_test docker_sync_image_test docker_menubar_test)
   add_test(NAME ${t} COMMAND sh "${CMAKE_SOURCE_DIR}/tests/${t}.sh")
 endforeach()
 add_test(NAME fetch_sdk_test
-  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/fetch_sdk_test.sh" "${MavericksSharedCMake_SCRIPTS}/fetch_sdk.sh")
+  COMMAND sh "${CMAKE_SOURCE_DIR}/tests/fetch_sdk_test.sh" "${MavericksShipyard_SCRIPTS}/fetch_sdk.sh")

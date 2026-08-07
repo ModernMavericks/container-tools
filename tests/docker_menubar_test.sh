@@ -28,7 +28,7 @@ grep -q '"no-fusion"' "$AD" || fail "glyph must distinguish needs-attention stat
 grep -q 'Check for Updates' "$AD" || fail "menu must offer 'Check for Updates'"
 # Must launch the updater via LaunchServices (open), NOT fork+exec on the executable: Sparkle's
 # package-install needs a LaunchServices-launched host, or AuthorizationExecuteWithPrivileges fails
-# (-60008). See the updater's Info.plist.in comment in shared-cmake.
+# (-60008). See the updater's Info.plist.in comment in shipyard.
 grep -q '/usr/bin/open' "$AD" || fail "'Check for Updates' must launch the updater via open (LaunchServices), not fork+exec"
 grep -q 'ContainerToolsUpdater.app' "$AD" || fail "'Check for Updates' must open the bundled updater .app"
 if grep -q 'ContainerToolsUpdater.app/Contents/MacOS/ContainerToolsUpdater' "$AD"; then

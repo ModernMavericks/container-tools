@@ -51,17 +51,17 @@ jobs:
         with:
           fetch-depth: 0   # a local_release repackage counts existing <upstream>-mavericks.* tags
 
-      # shared-cmake installs itself via its own action (self-registering in the CMake user package
+      # shipyard installs itself via its own action (self-registering in the CMake user package
       # registry); consumed thereafter via find_package. @v1 is the moving major tag (Renovate tracks it).
-      - name: Install mavericks-shared-cmake
-        uses: ModernMavericks/shared-cmake/.github/actions/install@v1
+      - name: Install mavericks-shipyard
+        uses: ModernMavericks/shipyard/.github/actions/install@v1
 
       # The ingredient pin list is derived from repackage-on-ingredient-bump.yml's own paths, so the
       # repackage trigger and the release notes can't drift -- but a glob that matches nothing would
       # silently mean no repackage and thinner notes. Fail here instead.
       - name: Guard the ingredient pin declaration
         run: |
-          SCR="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
+          SCR="$(cat "$HOME/.cmake/packages/MavericksShipyard/"* | head -1)/scripts"
           sh "$SCR/check-ingredient-pins.sh"
 
       # Three ways in here decide two things: what VER is, and whether this run publishes. The
@@ -82,13 +82,13 @@ jobs:
           # The MODE comes from release-mode.sh so that build-iso, which has no way to know a
           # repackage is in progress, reaches the same answer. They disagreed once: .15 here, .14
           # there, in one run.
-          MODE="$(LOCAL_RELEASE="${{ github.event.inputs.local_release }}" sh "$MSC_SCRIPTS/release-mode.sh")"
+          MODE="$(LOCAL_RELEASE="${{ github.event.inputs.local_release }}" sh "$SHIPYARD_SCRIPTS/release-mode.sh")"
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
             VER="${GITHUB_REF_NAME}"
             printf '%s\n' "$VER" > VERSION
             PUBLISH=true
           else
-            VER="$(sh "$MSC_SCRIPTS/resolve-version.sh" "$MODE")"
+            VER="$(sh "$SHIPYARD_SCRIPTS/resolve-version.sh" "$MODE")"
             [ "$MODE" = local ] && PUBLISH=true || PUBLISH=false
           fi
           echo "version=$VER" >> "$GITHUB_OUTPUT"
@@ -126,7 +126,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.sdk-cache
-          key: macosx10.9-sdk-v1   # the SDK is pinned inside fetch_sdk.sh; key is stable across shared-cmake bumps
+          key: macosx10.9-sdk-v1   # the SDK is pinned inside fetch_sdk.sh; key is stable across shipyard bumps
 
       - name: Build + gate (the SAME cmake build the Tahoe dry run runs)
         env:
@@ -172,7 +172,7 @@ jobs:
           # Record what THIS job built from. The .pkg is assembled from two independent jobs -- these
           # binaries and an iso built on Linux -- so the risk worth catching is them coming from
           # different commits (a re-run, a stale artifact). Conformance compares the records.
-          sh "$MSC_SCRIPTS/build-info.sh" build-info-macos.txt \
+          sh "$SHIPYARD_SCRIPTS/build-info.sh" build-info-macos.txt \
             variant=macos commit="$GITHUB_SHA" version="${{ steps.ver.outputs.version }}" \
             docker_cli="$(sed -n 's/^REF=//p' components/docker-cli/version)" \
             docker_compose="$(sed -n 's/^REF=//p' components/docker-compose/version)" \
@@ -202,9 +202,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # cmake resolves the version from the tags now, in this job too
-      # clone_pinned.sh lives in shared-cmake; the iso build resolves it via find_package.
-      - name: Install mavericks-shared-cmake
-        uses: ModernMavericks/shared-cmake/.github/actions/install@v1
+      # clone_pinned.sh lives in shipyard; the iso build resolves it via find_package.
+      - name: Install mavericks-shipyard
+        uses: ModernMavericks/shipyard/.github/actions/install@v1
       # Resolve the version BEFORE configuring, using the run's mode -- otherwise this job derives the
       # shipped N while build-macos derives N+1, and one .pkg is built from two versions. A tag build
       # needs no special case: the tag exists by now, so auto returns exactly it.
@@ -212,7 +212,7 @@ jobs:
         env:
           LOCAL_RELEASE: ${{ github.event.inputs.local_release }}
         run: |
-          VER="$(sh "$MSC_SCRIPTS/resolve-version.sh" "$(sh "$MSC_SCRIPTS/release-mode.sh")")"
+          VER="$(sh "$SHIPYARD_SCRIPTS/resolve-version.sh" "$(sh "$SHIPYARD_SCRIPTS/release-mode.sh")")"
           echo "iso job building $VER"
 
       - name: Build the boot2docker iso (same cmake iso build the box runs)
@@ -220,7 +220,7 @@ jobs:
           cmake --preset iso
           cmake --build --preset iso
           # The other half of the record (see build-macos): same commit, plus the iso's own pins.
-          sh "$MSC_SCRIPTS/build-info.sh" build-info-iso.txt \
+          sh "$SHIPYARD_SCRIPTS/build-info.sh" build-info-iso.txt \
             variant=iso commit="$GITHUB_SHA" version="$(cat VERSION)" \
             boot2docker="$(sed -n 's/^REF=//p' components/boot2docker/version)" \
             boot2docker_digest="$(sed -n 's/^DIGEST=//p' components/boot2docker/version)" \
@@ -245,8 +245,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # generated notes diff ingredient pins against the previous release tag
-      - name: Install mavericks-shared-cmake
-        uses: ModernMavericks/shared-cmake/.github/actions/install@v1
+      - name: Install mavericks-shipyard
+        uses: ModernMavericks/shipyard/.github/actions/install@v1
       - uses: actions/download-artifact@v8
         with: { name: packaging-inputs, path: dl }
       - uses: actions/download-artifact@v8
@@ -266,7 +266,7 @@ jobs:
           VER: ${{ needs.build-macos.outputs.version }}
         run: |
           set -eu
-          SCR="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
+          SCR="$(cat "$HOME/.cmake/packages/MavericksShipyard/"* | head -1)/scripts"
           NOTES="release-notes/$VER.md"
           if [ ! -s "$NOTES" ]; then
             mkdir -p release-notes
@@ -301,14 +301,14 @@ jobs:
           VER: ${{ needs.build-macos.outputs.version }}
         run: |
           [ -n "$SPARKLE_PRIVATE_KEY" ] || { echo "::error::SPARKLE_PRIVATE_KEY secret not set"; exit 1; }
-          # Resolve the installed shared-cmake scripts dir via the CMake user package registry.
-          SH="$(cat "$HOME/.cmake/packages/MavericksSharedCMake/"* | head -1)/scripts"
-          [ -d "$SH" ] || { echo "::error::shared-cmake scripts not found at $SH"; exit 1; }
+          # Resolve the installed shipyard scripts dir via the CMake user package registry.
+          SH="$(cat "$HOME/.cmake/packages/MavericksShipyard/"* | head -1)/scripts"
+          [ -d "$SH" ] || { echo "::error::shipyard scripts not found at $SH"; exit 1; }
           mkdir -p in dist
           tar -C in -xzf dl/packaging-inputs.tgz      # restores executable bits
           PKG="dist/container-tools-$VER.pkg"
 
-          MSC_SCRIPTS="$SH" sh cmake/package_pkg.sh --out "$PKG" --version "$VER" \
+          SHIPYARD_SCRIPTS="$SH" sh cmake/package_pkg.sh --out "$PKG" --version "$VER" \
             --docker in/docker --compose in/docker-compose --machine in/docker-machine \
             --lazydocker in/lazydocker --iso iso/boot2docker.iso \
             --updater-app in/ContainerToolsUpdater.app \
@@ -339,13 +339,13 @@ jobs:
         env:
           VER: ${{ needs.build-macos.outputs.version }}
         run: |
-          sh "$MSC_SCRIPTS/artifact-facts.sh" dist "$VER" \
-            | sh "$MSC_SCRIPTS/check-artifact-conformance.sh"
+          sh "$SHIPYARD_SCRIPTS/artifact-facts.sh" dist "$VER" \
+            | sh "$SHIPYARD_SCRIPTS/check-artifact-conformance.sh"
           # Behavior gate: a client on the previous release must actually SEE this as an upgrade -- a
           # numeric sparkle:version that orders strictly after the last published one. The conformance
           # check above verifies artifacts AGREE; it never exercised update ordering, which is the gap
           # the "-mavericks.N compares EQUAL -> you're up to date" bug shipped straight through.
-          sh "$MSC_SCRIPTS/assert_appcast_upgradeable.sh" --appcast dist/appcast.xml --version "$VER"
+          sh "$SHIPYARD_SCRIPTS/assert_appcast_upgradeable.sh" --appcast dist/appcast.xml --version "$VER"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -365,7 +365,7 @@ jobs:
     needs: [build-macos, package]
     permissions:
       contents: write
-    uses: ModernMavericks/shared-cmake/.github/workflows/publish-release.yml@v1
+    uses: ModernMavericks/shipyard/.github/workflows/publish-release.yml@v1
     with:
       version: ${{ needs.build-macos.outputs.version }}
       artifact: docker-pkg

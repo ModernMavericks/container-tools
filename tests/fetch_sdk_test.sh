@@ -1,5 +1,5 @@
 #!/bin/sh
-# Checks the pinned SDK fetch script (now the shared mavericks-shared-cmake copy, path
+# Checks the pinned SDK fetch script (now the shared mavericks-shipyard copy, path
 # passed as $1 from the ctest def). Verifies the pin + durable cache + tapi normalization.
 set -eu
 SDK_SH="${1:?fetch_sdk.sh path required (arg 1)}"

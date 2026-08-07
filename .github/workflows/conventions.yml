@@ -2,7 +2,7 @@ name: conventions
 
 # The family conventions gate (concurrency declared, tests actually run, INGREDIENTS.md present, no
 # Renovate key restating the preset, a release that publishes notes). Three lines on purpose: the
-# checks live in shared-cmake, so adding one never touches this file.
+# checks live in shipyard, so adding one never touches this file.
 
 on:
   push:
@@ -12,4 +12,4 @@ on:
 
 jobs:
   conventions:
-    uses: ModernMavericks/shared-cmake/.github/workflows/family-conventions.yml@v1
+    uses: ModernMavericks/shipyard/.github/workflows/family-conventions.yml@v1
