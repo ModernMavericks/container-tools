@@ -149,19 +149,26 @@ case_packaging() {
   echo "  ctl-packaging OK"
 }
 
-# local_release version-bump LOCK: concurrent dispatches (e.g. a manual cut racing the ingredient-bump
-# auto-repackage) must serialize on a shared concurrency group, or both read the same N and collide on
-# the same -mavericks.(N+1) tag. Guard the serialization and forbid a revert to per-run-id grouping.
-case_release_lock() {
+# A run that can publish must be ALONE in its concurrency group. The old shape here was the opposite:
+# all dispatches shared one group with cancel-in-progress:false, sold as a version-bump lock. It never
+# locked anything -- cancel-in-progress:false protects the RUNNING run, not a QUEUED one, and GitHub
+# keeps only the newest pending run per group. A third dispatch cancels the queued second (verified
+# 2026-09-09). Two dispatches may now compute the same -mavericks.(N+1); shipyard's publish-release.yml
+# refuses the loser at publish time, which is loud where the old shape was silent.
+case_release_concurrency() {
   RY="$ROOT/.github/workflows/release.yml"
-  grep -qF "workflow_dispatch' && 'local_release'" "$RY" \
-    || fail "release.yml: local_release dispatches must share ONE concurrency group (version-bump lock)"
-  grep -qF "cancel-in-progress: \${{ github.event_name != 'workflow_dispatch' }}" "$RY" \
-    || fail "release.yml: dispatch runs must queue (cancel-in-progress false), never cancel a publish"
-  if grep -qF "workflow_dispatch' && github.run_id" "$RY"; then
-    fail "release.yml: per-run-id dispatch group reintroduces the concurrent-cut collision"
+  grep -qF "github.event_name == 'pull_request'" "$RY" \
+    || fail "release.yml: the concurrency group must single out pull_request -- it is the only event that supersedes"
+  grep -qF "github.run_id" "$RY" \
+    || fail "release.yml: pushes, tags and dispatches must be keyed per RUN, so a publishing run is alone in its group"
+  grep -qF "cancel-in-progress: \${{ github.event_name == 'pull_request' }}" "$RY" \
+    || fail "release.yml: only a pull_request may be cancelled by a superseding run"
+  # the shape this replaced, in either of its spellings
+  if grep -qF "workflow_dispatch' && 'local_release'" "$RY" \
+     || grep -qF "cancel-in-progress: \${{ github.event_name != 'workflow_dispatch' }}" "$RY"; then
+    fail "release.yml: the shared-dispatch-group 'lock' is back -- it silently evicts queued releases"
   fi
-  echo "  release-lock OK"
+  echo "  release-concurrency OK"
 }
 
 # CLI-first image roll: image-status echoes current/stale/absent; image-upgrade repoints a stale
@@ -230,5 +237,5 @@ case_login
 case_vmxpid
 case_setup
 case_packaging
-case_release_lock
+case_release_concurrency
 echo "docker_ctl_test: OK"
