@@ -34,3 +34,9 @@ line delta rather than a meaningless byte count.
 CI proves the build and the fetch/fingerprint gates; a modern runner cannot boot-proof the iso, so the
 boot-proof auto-skips (`ctest` code 77). Real-10.9 boot testing is the acceptance bar — do not read a
 green CI as proof the iso boots.
+
+## Upstream release notes
+
+No upstream release notes: there is no single upstream to link. The product bundles six components
+(docker-cli, docker-compose, docker-machine, lazydocker, boot2docker, golang), each an ingredient
+with its own pin; their changes are named in each release's generated "Build ingredients" section.
