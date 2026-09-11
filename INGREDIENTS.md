@@ -15,6 +15,7 @@ repackage of the same date-stamped product.
 | docker Machine | `components/docker-machine/version` | ✅ `git-refs` + `currentDigest` | same |
 | lazydocker | `components/lazydocker/version` | ✅ `git-refs` + `currentDigest` | same |
 | boot2docker source | `components/boot2docker/version` | ✅ `git-refs` + `currentDigest` | same; the iso build re-clones (commit-digest-verified) + rebuilds |
+| boot2docker build base (Debian) | `components/boot2docker/version` (`BASE=debian:<N>-slim@sha256:…`) | ✅ `docker` + `currentDigest` (digest refreshes and the next Debian major) | same; replaces upstream's hard-coded `FROM` (`cmake/rebase_dockerfile.sh`), whose bullseye aged out of security support and broke `apt-get update` |
 | boot2docker patch overlay | `components/boot2docker/patches/*.patch` | n/a (this repo's own fix) | **is** an ingredient — it is applied into the iso, so a change rebuilds it |
 | ModernMavericks Go cross toolchain | `components/golang/version` | ✅ `github-releases` on `ModernMavericks/golang` | watched path → repackage rebuilt on the new Go |
 | MacOSX10.9 SDK, Sparkle framework | `ModernMavericks/shipyard@v1` | ✅ github-actions manager tracks the tag | `@v1` is a *moving* tag: content changes without the pin changing, so nothing auto-repackages |
