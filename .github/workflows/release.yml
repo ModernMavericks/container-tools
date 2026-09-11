@@ -306,7 +306,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}   # sign_and_appcast.sh fetches ed25519-sign via `gh` -> needs auth (else 403 rate-limit)
           VER: ${{ needs.build-macos.outputs.version }}
         run: |
-          [ -n "$SPARKLE_PRIVATE_KEY" ] || { echo "::error::SPARKLE_PRIVATE_KEY secret not set"; exit 1; }
+          # printenv, not [ -n "$SPARKLE_PRIVATE_KEY" ]: the shell never expands the key, so no trace can print it
+          printenv SPARKLE_PRIVATE_KEY | grep -q . || { echo "::error::SPARKLE_PRIVATE_KEY secret not set"; exit 1; }
           # Resolve the installed shipyard scripts dir via the CMake user package registry.
           SH="$(cat "$HOME/.cmake/packages/MavericksShipyard/"* | head -1)/scripts"
           [ -d "$SH" ] || { echo "::error::shipyard scripts not found at $SH"; exit 1; }
@@ -362,13 +363,28 @@ jobs:
             dist/RELEASE_NOTES.md
             dist/build-info-*.txt
 
+  # Before anything is published: no log of this run, and no file about to be released, carries a
+  # piece of the signing key. shipyard's publish-release.yml looks for this job's record on any signed
+  # release; it cannot run the scan itself (reading job logs needs actions: read).
+  scan:
+    needs: [build-macos, package]
+    if: needs.build-macos.outputs.publish == 'true'
+    permissions:
+      actions: read     # this run's job logs
+      contents: read
+    uses: ModernMavericks/shipyard/.github/workflows/scan-for-key.yml@v1
+    with:
+      artifact: docker-pkg
+    secrets:
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+
   # All-or-nothing publish: the ONLY writer to Releases, gated on package. The shared workflow owns
   # the mechanics -- it regenerates SHA256SUMS, uses RELEASE_NOTES.md from the artifact as the body
   # (failing if it is missing or empty), and mints the tag at this commit, which a dispatch-cut
   # repackage needs since a GITHUB_TOKEN-pushed tag triggers nothing.
   publish:
     if: needs.build-macos.outputs.publish == 'true'
-    needs: [build-macos, package]
+    needs: [build-macos, package, scan]
     permissions:
       contents: write
     uses: ModernMavericks/shipyard/.github/workflows/publish-release.yml@v1
