@@ -4,10 +4,11 @@
 #   $1 SRC   absolute cloned source dir (has Dockerfile)
 #   $2 OUT   absolute output dir (iso -> $OUT/boot2docker.iso)
 #   $3 REF   pinned tag (used only to name the throwaway image)
+#   $4 BASE  pinned base image, replacing upstream's FROM (see rebase_dockerfile.sh)
 # Requires a reachable Docker daemon (CMake iso-mode configure already checked).
 set -eu
-[ $# -eq 3 ] || { echo "usage: $0 SRC OUT REF" >&2; exit 64; }
-SRC=$1; OUT=$2; REF=$3
+[ $# -eq 4 ] || { echo "usage: $0 SRC OUT REF BASE" >&2; exit 64; }
+SRC=$1; OUT=$2; REF=$3; BASE=$4
 [ -f "$SRC/Dockerfile" ] || { echo "no Dockerfile in $SRC" >&2; exit 1; }
 mkdir -p "$OUT"
 IMG="container-tools-boot2docker:${REF}"
@@ -21,6 +22,8 @@ for p in "$PATCHES"/*.patch; do
   [ -e "$p" ] || continue
   echo "applying overlay $p"; git -C "$SRC" apply --3way "$p"
 done
+sh "$(dirname "$0")/rebase_dockerfile.sh" "$SRC/Dockerfile" "$BASE"
+echo "base image: $BASE"
 docker build -t "$IMG" "$SRC"
 # The container emits the ISO on stdout (dragonflylee's recipe): capture to a temp then move.
 tmp="$OUT/.boot2docker.iso.$$"

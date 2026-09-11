@@ -16,4 +16,8 @@ grep -qE '^DIGEST=[0-9a-f]{40}$' "$V" \
 # REPO=...git, then REF=..., then DIGEST=<40 hex>, in order.
 awk '/^REPO=.*\.git$/{r=1;next} r&&/^REF=/{f=1;next} f&&/^DIGEST=[0-9a-f]{40}$/{ok=1} {r=0} END{exit ok?0:1}' "$V" \
   || { echo "version: REPO/REF/DIGEST not in the order Renovate parses" >&2; exit 1; }
+# BASE replaces upstream's FROM (a Debian that has aged out of security support fails apt-get update
+# outright): a numeric -slim tag, so Renovate can propose the next Debian major, pinned by digest.
+grep -qE '^BASE=debian:[0-9]+-slim@sha256:[0-9a-f]{64}$' "$V" \
+  || { echo "version: bad/missing BASE (debian:<N>-slim@sha256:<64 hex>)" >&2; exit 1; }
 echo "boot2docker_pin_test: OK"

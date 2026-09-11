@@ -15,6 +15,15 @@
     },
     {
       "customType": "regex",
+      "description": "boot2docker's build base (replaces upstream's FROM; see cmake/rebase_dockerfile.sh). A numeric -slim tag, so the next Debian major is proposed, not just digest refreshes.",
+      "managerFilePatterns": [
+        "/^components/boot2docker/version$/"
+      ],
+      "matchStrings": ["BASE=(?<depName>[^:\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[0-9a-f]{64})"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "managerFilePatterns": [
         "/^components/golang/version$/"
       ],

@@ -230,6 +230,7 @@ jobs:
             variant=iso commit="$GITHUB_SHA" version="$(cat VERSION)" \
             boot2docker="$(sed -n 's/^REF=//p' components/boot2docker/version)" \
             boot2docker_digest="$(sed -n 's/^DIGEST=//p' components/boot2docker/version)" \
+            boot2docker_base="$(sed -n 's/^BASE=//p' components/boot2docker/version)" \
             iso_sha256="$(shasum -a 256 build-iso/boot2docker/boot2docker.iso | cut -d' ' -f1)"
           # Put the record BESIDE the iso and upload that one directory. Listing two paths with
           # different roots makes upload-artifact root the archive at their least common ancestor, so

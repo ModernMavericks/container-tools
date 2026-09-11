@@ -9,4 +9,7 @@ sh -n "$S" || { echo "syntax error in $S" >&2; exit 1; }
 if sh "$S" only-one-arg >/dev/null 2>&1; then
   echo "expected nonzero exit on missing args" >&2; exit 1
 fi
+# BASE (4th) is required too: without it the build would silently use upstream's own FROM.
+rc=0; sh "$S" src out ref >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 64 ] || { echo "expected usage exit (64) on missing BASE, got $rc" >&2; exit 1; }
 echo "boot2docker_build_script_test: OK"

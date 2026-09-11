@@ -109,6 +109,12 @@ if(MAVERICKS_DOCKER_MODE STREQUAL "iso")
   endif()
 
   mavericks_docker_read_pin("${CMAKE_SOURCE_DIR}/components/boot2docker" B2D_REPO B2D_REF B2D_DIGEST)
+  # The pinned base image that replaces upstream's FROM (see cmake/rebase_dockerfile.sh).
+  file(STRINGS "${CMAKE_SOURCE_DIR}/components/boot2docker/version" B2D_BASE REGEX "^BASE=")
+  string(REGEX REPLACE "^BASE=" "" B2D_BASE "${B2D_BASE}")
+  if(NOT B2D_BASE)
+    message(FATAL_ERROR "components/boot2docker/version has no BASE= (the iso's pinned base image)")
+  endif()
   set(B2D_SRC "${MAVERICKS_DOCKER_SRC_CACHE}/boot2docker-${B2D_REF}")
   set(B2D_OUT "${CMAKE_BINARY_DIR}/boot2docker")
   set(B2D_ISO "${B2D_OUT}/boot2docker.iso")
@@ -120,10 +126,14 @@ if(MAVERICKS_DOCKER_MODE STREQUAL "iso")
     CONFIGURE_COMMAND ""
     BUILD_IN_SOURCE  TRUE
     BUILD_COMMAND    sh "${CMAKE_SOURCE_DIR}/cmake/build_boot2docker.sh"
-                       <SOURCE_DIR> "${B2D_OUT}" "${B2D_REF}"
+                       <SOURCE_DIR> "${B2D_OUT}" "${B2D_REF}" "${B2D_BASE}"
     INSTALL_COMMAND  ""
     BUILD_BYPRODUCTS "${B2D_ISO}"
   )
+  # A REF bump changes SOURCE_DIR (so everything reruns); a BASE bump changes only the build step's
+  # argument, which ExternalProject's stamps don't notice -- so rebuild when the pin file changes.
+  ExternalProject_Add_StepDependencies(boot2docker build
+    "${CMAKE_SOURCE_DIR}/components/boot2docker/version")
 
   # The iso's supply-chain gate is clone_pinned.sh (in the boot2docker DOWNLOAD_COMMAND above): the
   # source is verified against the pinned commit DIGEST or the build bails. There is deliberately no
@@ -131,7 +141,7 @@ if(MAVERICKS_DOCKER_MODE STREQUAL "iso")
   # without a shippability signal. We ship the from-source rebuild; runtime issues -> -mavericks.2.
 
   # Self-contained unit tests for the iso scripts.
-  foreach(t boot2docker_pin_test boot2docker_build_script_test boot2docker_ci_test)
+  foreach(t boot2docker_pin_test boot2docker_build_script_test boot2docker_rebase_test boot2docker_ci_test)
     add_test(NAME ${t} COMMAND sh "${CMAKE_SOURCE_DIR}/tests/${t}.sh")
   endforeach()
 
