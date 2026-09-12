@@ -66,9 +66,7 @@ jobs:
       # repackage trigger and the release notes can't drift -- but a glob that matches nothing would
       # silently mean no repackage and thinner notes. Fail here instead.
       - name: Guard the ingredient pin declaration
-        run: |
-          SCR="$(cat "$HOME/.cmake/packages/MavericksShipyard/"* | head -1)/scripts"
-          sh "$SCR/check-ingredient-pins.sh"
+        run: sh "$SHIPYARD_SCRIPTS/check-ingredient-pins.sh"
 
       # Three ways in here decide two things: what VER is, and whether this run publishes. The
       # arithmetic is NOT here: resolve-version.sh (shared) derives <upstream>-mavericks.N from the
@@ -261,36 +259,22 @@ jobs:
 
       # This job's checkout is fresh (a separate runner from build-macos), so it does NOT see the
       # VERSION mutation build-macos made locally for a local_release repackage. Use the authoritative
-      # version build-macos decided (needs.build-macos.outputs.version), not `cat VERSION`. For the
-      # same reason, release-notes/$VER.md for a freshly-cut local_release version can't exist in this
-      # checkout yet (nothing was committed) -- stub it so sign_and_appcast.sh's --notes-file has a
-      # non-empty file to read.
-      # Then append the FACTS: which ingredient pins moved since the last release. A repackage exists
-      # to ship a new input, so naming that input is the whole point of its notes -- but notes are
-      # prose, so every step here tolerates failure rather than blocking a release.
-      - name: Compose release notes (stub if absent, + which ingredients changed)
-        env:
-          VER: ${{ needs.build-macos.outputs.version }}
+      # version build-macos decided (needs.build-macos.outputs.version), not `cat VERSION`. This repo
+      # has no external upstream tag axis, so its own version string doubles as the release tag.
+      #
+      # release-notes.sh derives the ingredient section itself, from the pins
+      # repackage-on-ingredient-bump.yml watches -- no separate ingredient-pins.sh/ingredient-notes.sh
+      # calls here, and no stubbed prose: a repackage that cannot say what moved must not ship.
+      #
+      # --product is the BARE noun "Container Tools", not "Container Tools for Mavericks": this
+      # repo's own version/tag scheme is <date>-mavericks.N (resolve-version.sh, an UPSTREAM_VERSION
+      # file), which the generator's title logic reads as the PORT shape (it has a "-mavericks." axis
+      # to split on), not the true self-upstream shape (bare YYYYMMDD.N, no "-mavericks."). The port
+      # template already appends " for Mavericks" itself, so passing the full descriptor here would
+      # double it.
+      - name: Copy build-info records into dist
         run: |
           set -eu
-          SCR="$(cat "$HOME/.cmake/packages/MavericksShipyard/"* | head -1)/scripts"
-          NOTES="release-notes/$VER.md"
-          if [ ! -s "$NOTES" ]; then
-            mkdir -p release-notes
-            {
-              echo "ModernMavericks container-tools $VER."
-              echo
-              echo "- Repackage rebuilt with updated build ingredients. No change intended to the"
-              echo "  docker component versions themselves beyond what is listed below."
-              echo "- Automatically cut via workflow_dispatch local_release."
-            } > "$NOTES"
-          fi
-          PREV="$(sh "$SCR/previous-release-tag.sh" "$VER" || true)"
-          PINS="$(sh "$SCR/ingredient-pins.sh" || true)"
-          if [ -n "$PREV" ] && [ -n "$PINS" ]; then
-            SECTION="$(sh "$SCR/ingredient-notes.sh" "$PREV" $PINS || true)"
-            [ -z "$SECTION" ] || printf '\n%s\n' "$SECTION" >> "$NOTES"
-          fi
           mkdir -p dist
           # Both halves' build records travel with the release: conformance compares them, and anyone
           # can see which commit each half came from.
@@ -298,8 +282,17 @@ jobs:
           # the way we think it did. Tolerating that silently is how conformance ends up reporting
           # "ok" for a comparison it never made.
           cp dl/build-info-macos.txt iso/build-info-iso.txt dist/
-          cp "$NOTES" dist/RELEASE_NOTES.md   # becomes the Release body; not attached as an asset
-          echo "=== $NOTES ==="; cat "$NOTES"
+
+      - name: Generate release notes
+        env:
+          VER: ${{ needs.build-macos.outputs.version }}
+        run: |
+          set -eu
+          sh "$SHIPYARD_SCRIPTS/release-notes.sh" \
+            --tag "$VER" --version "$VER" \
+            --product "Container Tools" --min-os 10.9.5 \
+            --out dist/RELEASE_NOTES.md   # becomes the Release body; not attached as an asset
+          echo "=== dist/RELEASE_NOTES.md ==="; cat dist/RELEASE_NOTES.md
 
       - name: Assemble + sign the .pkg, render the appcast
         env:
@@ -309,14 +302,12 @@ jobs:
         run: |
           # printenv, not [ -n "$SPARKLE_PRIVATE_KEY" ]: the shell never expands the key, so no trace can print it
           printenv SPARKLE_PRIVATE_KEY | grep -q . || { echo "::error::SPARKLE_PRIVATE_KEY secret not set"; exit 1; }
-          # Resolve the installed shipyard scripts dir via the CMake user package registry.
-          SH="$(cat "$HOME/.cmake/packages/MavericksShipyard/"* | head -1)/scripts"
-          [ -d "$SH" ] || { echo "::error::shipyard scripts not found at $SH"; exit 1; }
+          [ -d "$SHIPYARD_SCRIPTS" ] || { echo "::error::SHIPYARD_SCRIPTS not set by install@v1"; exit 1; }
           mkdir -p in dist
           tar -C in -xzf dl/packaging-inputs.tgz      # restores executable bits
           PKG="dist/container-tools-$VER.pkg"
 
-          SHIPYARD_SCRIPTS="$SH" sh cmake/package_pkg.sh --out "$PKG" --version "$VER" \
+          sh cmake/package_pkg.sh --out "$PKG" --version "$VER" \
             --docker in/docker --compose in/docker-compose --machine in/docker-machine \
             --lazydocker in/lazydocker --iso iso/boot2docker.iso \
             --updater-app in/ContainerToolsUpdater.app \
@@ -334,10 +325,10 @@ jobs:
           # ed25519-sign. The enclosure points at the versioned release asset; the client feed is
           # /latest/ resolves to this full release immediately, so Sparkle clients pick it up right away.
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/$VER/$(basename "$PKG")"
-          sh "$SH/sign_and_appcast.sh" \
+          sh "$SHIPYARD_SCRIPTS/sign_and_appcast.sh" \
             --channel-title "Container Tools for Mavericks" \
             --version "$VER" --pkg-url "$URL" --min-os 10.9.5 \
-            --notes-file "release-notes/$VER.md" --pkg "$PKG" > dist/appcast.xml
+            --notes-file dist/RELEASE_NOTES.md --pkg "$PKG" > dist/appcast.xml
           echo "=== appcast.xml ==="; cat dist/appcast.xml
       # No SHA256SUMS here: publish-release.yml regenerates it over everything it attaches, so the
       # checksums cover the appcast too and no repo hand-rolls that step.
